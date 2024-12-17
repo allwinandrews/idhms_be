@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from rest_framework.views import APIView
+from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -8,9 +9,10 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import update_last_login
-from api.models import User
-from api.serializers import RegisterSerializer
+from api.serializers import RegisterSerializer, AppointmentSerializer
 from api.permissions import IsAdmin, IsPatient, IsDentist, IsReceptionist
+from api.models import User
+from api.models import Appointment
 
 
 # --- Admin Only View ---
@@ -60,11 +62,11 @@ class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
-        username = request.data.get("username")
+        email = request.data.get("email")  # Accept email instead of username
         password = request.data.get("password")
 
-        # Authenticate user
-        user = authenticate(request, username=username, password=password)
+        # Authenticate user using email
+        user = authenticate(request, username=email, password=password)
 
         if user is not None:
             if not user.is_active:
@@ -91,7 +93,6 @@ class LoginView(APIView):
             )
 
         return Response(
-            {"error": "Invalid username or password."},
             status=status.HTTP_401_UNAUTHORIZED,
         )
 
@@ -150,3 +151,92 @@ class SecureView(APIView):
 
     def get(self, request):
         return Response({"message": "This is a secure view!"})
+
+
+class DentistAppointmentsView(APIView):
+    permission_classes = [IsAuthenticated, IsDentist]
+
+    def get(self, request):
+        # Use the `dentist_appointments` related name
+        appointments = request.user.dentist_appointments.all()
+        appointment_data = [
+            {
+                "patient_name": appointment.patient.username,
+                "appointment_date": appointment.appointment_date.strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
+                "status": appointment.status,
+            }
+            for appointment in appointments
+        ]
+        return Response(appointment_data, status=status.HTTP_200_OK)
+
+
+class ReceptionistManagePatientsView(APIView):
+    # View for receptionists to manage patient records.
+
+    permission_classes = [IsAuthenticated, IsReceptionist]
+
+    def post(self, request):
+        # Extract patient details from request
+        first_name = request.data.get("first_name")
+        last_name = request.data.get("last_name")
+        email = request.data.get("email")  # Allow input for real email
+        contact_info = request.data.get("contact_info", "")
+        dob = request.data.get("dob")
+        gender = request.data.get("gender")
+
+        # Basic validations
+        if (
+            not first_name
+            or not last_name
+            or not email
+            or not dob
+            or gender not in ["Male", "Female", "Other"]
+        ):
+            return Response({"error": "Invalid data provided."}, status=400)
+
+        # Check for email uniqueness
+        if User.objects.filter(email=email).exists():
+            return Response({"error": "Email already exists."}, status=400)
+
+        # Create the patient user
+        patient = User.objects.create_user(
+            email=email,
+            password="default_password",  # Default password; can be updated later
+            role="Patient",
+            dob=dob,
+            contact_info=contact_info,
+            gender=gender,
+            first_name=first_name,
+            last_name=last_name,
+        )
+
+        return Response(
+            {
+                "message": f"Patient {patient.first_name} {patient.last_name} created successfully!"
+            },
+            status=201,
+        )
+
+
+class AppointmentListCreateView(ListCreateAPIView):
+    # View for listing and creating appointments
+    queryset = Appointment.objects.all()
+    serializer_class = AppointmentSerializer
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [IsAuthenticated(), IsReceptionist()]  # Only Receptionist can POST
+        return [IsAuthenticated()]
+
+
+class AppointmentDetailView(RetrieveUpdateDestroyAPIView):
+    # View for retrieving, updating, and deleting appointments
+    queryset = Appointment.objects.all()
+    serializer_class = AppointmentSerializer
+
+    def get_permissions(self):
+        if self.request.method in ["PUT", "PATCH", "DELETE"]:
+            return [IsAuthenticated(), IsReceptionist()]  # Only Receptionist can modify
+        return [IsAuthenticated()]
