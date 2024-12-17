@@ -28,10 +28,11 @@ class IsDentist(BasePermission):
         return request.user.is_authenticated and request.user.role == "Dentist"
 
 
+from rest_framework.permissions import BasePermission
+
+
 class IsReceptionist(BasePermission):
-    """
-    Allows access only to Receptionist users.
-    """
+    # Custom permission to allow access only to users with the Receptionist role.
 
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role == "Receptionist"
