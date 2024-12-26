@@ -37,7 +37,7 @@ class CustomUserManager(BaseUserManager):
 
 class User(AbstractUser):
     """
-    Custom User model that uses email as the primary identifier instead of username.
+    Custom User model that uses email as the primary identifier.
     """
 
     ROLE_CHOICES = [
@@ -99,7 +99,7 @@ class Appointment(models.Model):
     )
 
     def __str__(self):
-        return f"Appointment for {self.patient.username} on {self.appointment_date}"
+        return f"Appointment for {self.patient.first_name} {self.patient.last_name} on {self.appointment_date}"
 
 
 class Billing(models.Model):
@@ -113,4 +113,4 @@ class Billing(models.Model):
     billing_date = models.DateField()
 
     def __str__(self):
-        return f"Billing for {self.patient.username} - {self.amount}"
+        return f"Billing for {self.patient.first_name} {self.patient.last_name} - {self.amount}"

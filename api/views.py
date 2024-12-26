@@ -7,12 +7,21 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import update_last_login
-from api.serializers import RegisterSerializer, AppointmentSerializer
+from api.serializers import (
+    RegisterSerializer,
+    AppointmentSerializer,
+    UserSerializer,
+    # RoleSerializer,
+)
 from api.permissions import IsAdmin, IsPatient, IsDentist, IsReceptionist
-from api.models import User
+
+# from api.models import User
 from api.models import Appointment
+
+
+User = get_user_model()
 
 
 # --- Admin Only View ---
@@ -62,7 +71,7 @@ class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request, *args, **kwargs):
-        email = request.data.get("email")  # Accept email instead of username
+        email = request.data.get("email")
         password = request.data.get("password")
 
         # Authenticate user using email
@@ -130,9 +139,10 @@ class PatientDataView(APIView):
 
         # Safely access patient-specific fields
         patient_data = {
-            "username": user.username,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
             "email": user.email,
-            "phone_number": user.contact_info if user.contact_info else "N/A",
+            "contact_info": user.contact_info if user.contact_info else "N/A",
             "dob": user.dob.strftime("%Y-%m-%d") if user.dob else "N/A",
             "gender": user.gender if user.gender else "N/A",
         }
@@ -153,29 +163,28 @@ class SecureView(APIView):
         return Response({"message": "This is a secure view!"})
 
 
-class DentistAppointmentsView(APIView):
-    permission_classes = [IsAuthenticated, IsDentist]
-
-    def get(self, request):
-        # Use the `dentist_appointments` related name
-        appointments = request.user.dentist_appointments.all()
-        appointment_data = [
-            {
-                "patient_name": appointment.patient.username,
-                "appointment_date": appointment.appointment_date.strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                ),
-                "status": appointment.status,
-            }
-            for appointment in appointments
-        ]
-        return Response(appointment_data, status=status.HTTP_200_OK)
-
-
 class ReceptionistManagePatientsView(APIView):
     # View for receptionists to manage patient records.
 
     permission_classes = [IsAuthenticated, IsReceptionist]
+
+    def get(self, request):
+        """
+        Retrieve a list of all patients.
+        """
+        patients = User.objects.filter(role="Patient")
+        serialized_patients = [
+            {
+                "id": patient.id,
+                "email": patient.email,
+                "first_name": patient.first_name,
+                "last_name": patient.last_name,
+                "contact_info": patient.contact_info,
+                "gender": patient.gender,
+            }
+            for patient in patients
+        ]
+        return Response(serialized_patients, status=200)
 
     def post(self, request):
         # Extract patient details from request
@@ -187,14 +196,21 @@ class ReceptionistManagePatientsView(APIView):
         gender = request.data.get("gender")
 
         # Basic validations
-        if (
-            not first_name
-            or not last_name
-            or not email
-            or not dob
-            or gender not in ["Male", "Female", "Other"]
-        ):
-            return Response({"error": "Invalid data provided."}, status=400)
+        errors = {}
+        if not first_name:
+            errors["first_name"] = "First name is required."
+        if not last_name:
+            errors["last_name"] = "Last name is required."
+        if not email:
+            errors["email"] = "Email is required."
+        if not dob:
+            errors["dob"] = "Date of birth is required."
+        if gender not in ["Male", "Female", "Other"]:
+            errors["gender"] = "Gender must be Male, Female, or Other."
+
+        # Return detailed validation errors if any
+        if errors:
+            return Response(errors, status=400)
 
         # Check for email uniqueness
         if User.objects.filter(email=email).exists():
@@ -220,23 +236,153 @@ class ReceptionistManagePatientsView(APIView):
         )
 
 
+# Appointment List and Create View
 class AppointmentListCreateView(ListCreateAPIView):
-    # View for listing and creating appointments
-    queryset = Appointment.objects.all()
+    """
+    View to list and create appointments.
+    - Receptionists have full CRUD access.
+    - Dentists can list appointments assigned to them.
+    - Patients can list their own appointments.
+    """
+
     serializer_class = AppointmentSerializer
+    permission_classes = [IsAuthenticated]
 
-    def get_permissions(self):
-        if self.request.method == "POST":
-            return [IsAuthenticated(), IsReceptionist()]  # Only Receptionist can POST
-        return [IsAuthenticated()]
+    def get_queryset(self):
+        user = self.request.user
+        print(f"User Role: {user.role}, User ID: {user.id}")
+        if user.role == "Receptionist":
+            return Appointment.objects.all()
+        elif user.role == "Dentist":
+            print(f"Querying appointments for Dentist ID: {user.id}")
+            return Appointment.objects.filter(dentist=user)
+        elif user.role == "Patient":
+            return Appointment.objects.filter(patient=user)
+        return Appointment.objects.none()
+
+    def create(self, request, *args, **kwargs):
+        # Only Receptionists can create appointments
+        if request.user.role != "Receptionist":
+            return Response(
+                {"detail": "Only receptionists can create appointments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().create(request, *args, **kwargs)
 
 
+# Appointment Detail View
 class AppointmentDetailView(RetrieveUpdateDestroyAPIView):
-    # View for retrieving, updating, and deleting appointments
-    queryset = Appointment.objects.all()
-    serializer_class = AppointmentSerializer
+    """
+    View to retrieve, update, or delete a specific appointment.
+    - Receptionists can update or delete appointments.
+    - Dentists and Patients can request updates (flagged for receptionists to review).
+    """
 
-    def get_permissions(self):
-        if self.request.method in ["PUT", "PATCH", "DELETE"]:
-            return [IsAuthenticated(), IsReceptionist()]  # Only Receptionist can modify
-        return [IsAuthenticated()]
+    serializer_class = AppointmentSerializer
+    queryset = Appointment.objects.all()
+    permission_classes = [IsAuthenticated]
+
+    def update(self, request, *args, **kwargs):
+
+        # Debug incoming request data
+        print("Incoming Data:", request.data)
+        user = request.user
+        appointment = self.get_object()
+
+        if user.role == "Receptionist":
+            # Receptionist can fully update the appointment
+            return super().update(request, *args, **kwargs)
+        elif user.role in ["Dentist", "Patient"]:
+            # Dentists and Patients can only request updates
+            update_request = request.data.get("status", "Update Requested")
+            appointment.status = update_request  # Flag the update request
+            appointment.save()
+            return Response(
+                {
+                    "detail": f"Update requested by {user.role}. Receptionist will review."
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+        return Response(
+            {"detail": "You are not authorized to update this appointment."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        # Only Receptionists can delete appointments
+        if request.user.role != "Receptionist":
+            return Response(
+                {"detail": "Only receptionists can delete appointments."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        return super().destroy(request, *args, **kwargs)
+
+
+# User List View with Role Filtering
+class UserListView(ListCreateAPIView):
+    """
+    View to list users dynamically filtered by role.
+    Admins can access this endpoint.
+    """
+
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def get_queryset(self):
+        role = self.request.query_params.get("role")
+        if role:
+            return User.objects.filter(role=role)
+        return User.objects.all()
+
+
+# User Detail View for CRUD Operations
+class UserDetailView(RetrieveUpdateDestroyAPIView):
+    """
+    View to retrieve, update, or delete a user.
+    Only Admins can access this endpoint.
+    """
+
+    serializer_class = UserSerializer
+    queryset = User.objects.all()
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def update(self, request, *args, **kwargs):
+        # Ensure Admins can update the role
+        user = self.get_object()
+        if "role" in request.data:
+            user.role = request.data["role"]
+        return super().update(request, *args, **kwargs)
+
+
+# Role Management View
+class RoleManagementView(APIView):
+    """
+    View to manage user roles dynamically.
+    Only Admins can assign roles.
+    """
+
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def post(self, request):
+        user_id = request.data.get("user_id")
+        new_role = request.data.get("role")
+
+        if not user_id or not new_role:
+            return Response(
+                {"detail": "User ID and Role are required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user = User.objects.get(id=user_id)
+            user.role = new_role
+            user.save()
+            return Response(
+                {"detail": f"Role updated to {new_role} for user {user.email}."},
+                status=status.HTTP_200_OK,
+            )
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "User not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )

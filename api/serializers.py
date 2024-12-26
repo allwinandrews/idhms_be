@@ -1,25 +1,57 @@
 from rest_framework import serializers
-from api.models import User, Appointment
+from api.models import Appointment
 import re
-from datetime import date
+
+# from datetime import date,datetime
+from django.utils.timezone import is_aware, make_aware
+
+from django.utils import timezone
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 
 class UserSerializer(serializers.ModelSerializer):
     # Serializer for basic user information.
-    # Used for non-sensitive data retrieval (e.g., username, email, and role).
+    email = serializers.EmailField(required=True)
+    contact_info = serializers.CharField(required=False)
+    gender = serializers.ChoiceField(
+        choices=[("Male", "Male"), ("Female", "Female"), ("Other", "Other")],
+        required=False,
+    )
+
     class Meta:
         model = User
-        fields = ["id", "username", "email", "role"]
+        fields = [
+            "id",
+            "first_name",
+            "last_name",
+            "email",
+            "contact_info",
+            "role",
+            "gender",
+        ]
+        extra_kwargs = {
+            "email": {"required": True},
+            "role": {"required": False},  # Allow updates to role
+        }
 
 
 class RegisterSerializer(serializers.ModelSerializer):
     # Serializer for user registration, with email as the unique identifier
 
-    phone_number = serializers.CharField(max_length=15, required=True)
+    contact_info = serializers.CharField(max_length=15, required=True)
     email = serializers.EmailField(required=True)
     first_name = serializers.CharField(max_length=100, required=True)
     last_name = serializers.CharField(max_length=100, required=True)
     dob = serializers.DateField(required=True)
+    GENDER_CHOICES = [
+        ("Male", "Male"),
+        ("Female", "Female"),
+        ("Other", "Other"),
+    ]
+
+    gender = serializers.ChoiceField(choices=GENDER_CHOICES)
 
     class Meta:
         model = User
@@ -29,8 +61,9 @@ class RegisterSerializer(serializers.ModelSerializer):
             "email",
             "password",
             "role",
-            "phone_number",
+            "contact_info",
             "dob",
+            "gender",
         ]
         extra_kwargs = {"password": {"write_only": True}}
 
@@ -65,11 +98,13 @@ class RegisterSerializer(serializers.ModelSerializer):
             email=validated_data["email"],
             password=validated_data["password"],
             role=validated_data.get("role", "Patient"),
-            contact_info=validated_data["phone_number"],
+            contact_info=validated_data["contact_info"],
             dob=validated_data["dob"],
             first_name=validated_data["first_name"],
             last_name=validated_data["last_name"],
+            gender=validated_data["gender"],
         )
+
         return user
 
 
@@ -82,18 +117,25 @@ class AppointmentSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]  # ID is automatically generated
 
     def validate_appointment_date(self, value):
+        """
+        Ensure the appointment date is not in the past.
+        """
+        # Ensure timezone-awareness
+        print(f"appointment_date: {value}, now: {timezone.now()}")
+        if not is_aware(value):
+            value = make_aware(value)
 
-        # Validate that the appointment date is in the future.
-
-        from datetime import datetime
-
-        if value < datetime.now():
-            raise serializers.ValidationError("Appointment date must be in the future.")
+        if value < timezone.now():
+            raise serializers.ValidationError("Appointment date cannot be in the past.")
         return value
 
     def validate(self, data):
-        # Custom validation to ensure patient and dentist are not the same.
-        if data.get("patient") == data.get("dentist"):
+        # Use instance values if fields are missing in partial updates
+        patient = data.get("patient", getattr(self.instance, "patient", None))
+        dentist = data.get("dentist", getattr(self.instance, "dentist", None))
+
+        # Check if patient and dentist are the same
+        if patient == dentist:
             raise serializers.ValidationError(
                 "Patient and Dentist cannot be the same person."
             )
