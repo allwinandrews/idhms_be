@@ -101,7 +101,8 @@ def test_dentist_appointments_access(api_client, create_user):
 
     # Access dentist appointments endpoint
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {dentist_token}")
-    response = api_client.get("/api/dentist/appointments/")
+    response = api_client.get("/api/appointments/")
+    print(response.data)  # Debug output
     assert response.status_code == 200
 
 

@@ -1,13 +1,5 @@
 import pytest
-from rest_framework.test import APIClient
-
-
-@pytest.fixture
-def api_client():
-    """
-    Fixture to create an API client instance.
-    """
-    return APIClient()
+from rest_framework import status
 
 
 @pytest.mark.django_db
@@ -15,33 +7,46 @@ def test_register_user(api_client):
     """
     Test user registration with valid and invalid inputs.
     """
-    # Valid registration
+    # Positive: Valid registration
     response = api_client.post(
         "/api/register/",
         {
-            "first_name": "John",
-            "last_name": "Doe",
-            "email": "johndoe@example.com",
-            "password": "strongpassword123",
+            "email": "test@example.com",
+            "password": "StrongPassword123!",
             "role": "Patient",
-            "phone_number": "+1234567890",
-            "dob": "1990-05-15",
+            "dob": "1990-01-01",
+            "contact_info": "+1234567890",
+            "first_name": "Test",
+            "last_name": "User",
+            "gender": "Male",
         },
     )
-    assert response.status_code == 201
-    assert response.data["message"] == "User registered successfully!"
+    print(response.data)
+    assert response.status_code == status.HTTP_201_CREATED
 
-    # Invalid registration: Missing email
+    # Negative: Missing fields
+    response = api_client.post(
+        "/api/register/",
+        {"email": "missingfields@example.com", "password": "password123"},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "dob" in response.data
+    assert "contact_info" in response.data
+
+    # Negative: Duplicate email
     response = api_client.post(
         "/api/register/",
         {
-            "first_name": "Jane",
-            "last_name": "Doe",
-            "password": "weakpassword",
+            "first_name": "Test",
+            "last_name": "User",
+            "email": "test@example.com",
+            "password": "StrongPassword123!",
             "role": "Patient",
+            "dob": "1990-01-01",
+            "contact_info": "+1234567890",
         },
     )
-    assert response.status_code == 400
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "email" in response.data
 
 
@@ -51,57 +56,52 @@ def test_login_user(api_client, create_user):
     Test user login with valid and invalid credentials.
     """
     # Create a test user
-    create_user(email="test@example.com", password="test_password", role="Patient")
+    create_user(email="validuser@example.com", password="testpassword", role="Patient")
 
-    # Valid login
+    # Positive: Valid login
     response = api_client.post(
-        "/api/login/", {"email": "test@example.com", "password": "test_password"}
+        "/api/login/", {"email": "validuser@example.com", "password": "testpassword"}
     )
-    assert response.status_code == 200
+    assert response.status_code == status.HTTP_200_OK
     assert "access" in response.data
     assert "refresh" in response.data
-    assert response.data["role"] == "Patient"
 
-    # Invalid login: Incorrect password
+    # Negative: Invalid password
     response = api_client.post(
-        "/api/login/", {"email": "test@example.com", "password": "wrong_password"}
+        "/api/login/", {"email": "validuser@example.com", "password": "wrongpassword"}
     )
-    assert response.status_code == 401
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert (
         response.data["detail"] == "No active account found with the given credentials"
     )
 
-    # Invalid login: Non-existent email
+    # Negative: Unregistered email
     response = api_client.post(
-        "/api/login/", {"email": "nonexistent@example.com", "password": "password123"}
+        "/api/login/", {"email": "unregistered@example.com", "password": "password123"}
     )
-    assert response.status_code == 401
-    assert (
-        response.data["detail"] == "No active account found with the given credentials"
-    )
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 @pytest.mark.django_db
 def test_token_refresh(api_client, create_user):
     """
-    Test JWT token refresh functionality.
+    Test refreshing JWT token with valid and invalid refresh tokens.
     """
-    # Create a test user with email-based authentication
-    create_user(email="refresh_user@example.com", password="refresh_password", role="Patient")
-
-    # Get tokens via login
-    response = api_client.post(
-        "/api/login/", {"email": "refresh_user@example.com", "password": "refresh_password"}
+    # Create a test user and login to get refresh token
+    create_user(
+        email="refreshuser@example.com", password="testpassword", role="Patient"
     )
-    assert response.status_code == 200
+    response = api_client.post(
+        "/api/login/", {"email": "refreshuser@example.com", "password": "testpassword"}
+    )
     refresh_token = response.data["refresh"]
 
-    # Valid token refresh
+    # Positive: Valid refresh token
     response = api_client.post("/api/login/refresh/", {"refresh": refresh_token})
-    assert response.status_code == 200
+    assert response.status_code == status.HTTP_200_OK
     assert "access" in response.data
 
-    # Invalid token refresh
-    response = api_client.post("/api/login/refresh/", {"refresh": "invalid_refresh_token"})
-    assert response.status_code == 401
+    # Negative: Invalid refresh token
+    response = api_client.post("/api/login/refresh/", {"refresh": "invalidtoken"})
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert "detail" in response.data

@@ -1,6 +1,10 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from api.models import User, Appointment, Billing
+from api.models import Appointment, Billing
+
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 
 # Inline models for related objects
@@ -30,15 +34,21 @@ class CustomUserAdmin(UserAdmin):
         "is_staff",
         "dob",
         "contact_info",
+        "first_name",
+        "last_name",
         "gender",
     )
+
     list_filter = ("role", "is_active", "is_staff", "gender")
     search_fields = ("email", "role")  # Search by email and role
-    ordering = ("email",)  # Order by email instead of username
+    ordering = ("email",)
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        ("Personal Info", {"fields": ("dob", "contact_info", "gender")}),
+        (
+            "Personal Info",
+            {"fields": ("dob", "contact_info", "first_name", "last_name", "gender")},
+        ),
         (
             "Roles and Permissions",
             {"fields": ("role", "is_active", "is_staff", "is_superuser")},

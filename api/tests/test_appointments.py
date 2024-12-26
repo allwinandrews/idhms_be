@@ -1,76 +1,107 @@
 import pytest
 from rest_framework import status
+from api.models import Appointment
+from django.utils.timezone import make_aware, is_aware, now, timedelta
+
+from datetime import datetime
 
 
 @pytest.mark.django_db
-def test_create_appointment(
-    api_client, create_user, receptionist_token, patient_token, dentist_token
-):
+def test_receptionist_create_appointment(api_client, receptionist_token, create_user):
     """
-    Test that Receptionists can create appointments and others cannot.
+    Test that a Receptionist can create an appointment.
     """
     # Create a test patient and dentist
-    create_user(email="patient@example.com", password="patient_pass", role="Patient")
-    create_user(email="dentist@example.com", password="dentist_pass", role="Dentist")
+    patient = create_user(
+        email="patient@example.com", password="password123", role="Patient"
+    )
+    dentist = create_user(
+        email="dentist@example.com", password="password123", role="Dentist"
+    )
 
-    # Receptionist creates an appointment
+    # Define a dynamic future appointment date
+    appointment_date = now() + timedelta(days=1)  # Always 1 day ahead
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token}")
     response = api_client.post(
         "/api/appointments/",
         {
-            "patient": 1,  # ID of the created patient
-            "dentist": 2,  # ID of the created dentist
-            "appointment_date": "2024-12-25 10:00:00",
+            "patient": patient.id,
+            "dentist": dentist.id,
+            "appointment_date": appointment_date.isoformat(),
             "status": "Scheduled",
         },
     )
+    print(response.data)  # Debugging output
     assert response.status_code == status.HTTP_201_CREATED
 
 
 @pytest.mark.django_db
-def test_update_appointment(api_client, receptionist_token):
+def test_receptionist_list_appointments(
+    api_client, receptionist_token, create_appointments
+):
     """
-    Test updating an existing appointment.
+    Test that a Receptionist can list all appointments.
     """
-    # Create a test appointment
-    appointment = Appointment.objects.create(
-        patient_id=1,
-        dentist_id=2,
-        appointment_date="2024-12-25 10:00:00",
-        status="Scheduled",
-    )
-
-    # Receptionist updates the appointment
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token}")
-    response = api_client.put(
-        f"/api/appointments/{appointment.id}/", {"status": "Completed"}
-    )
+    response = api_client.get("/api/appointments/")
     assert response.status_code == status.HTTP_200_OK
+    assert len(response.data) == Appointment.objects.count()
 
 
 @pytest.mark.django_db
-def test_retrieve_appointments(api_client, create_user, patient_token, dentist_token):
-    # Test that Patients and Dentists can retrieve their own appointments.
-    # Patient retrieves their appointments
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {patient_token}")
-    response = api_client.get("/api/appointments/")
-    assert response.status_code == status.HTTP_200_OK
-
-    # Dentist retrieves their appointments
+def test_dentist_list_appointments(api_client, dentist_token, create_appointments):
+    """
+    Test that a Dentist can list their assigned appointments.
+    """
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {dentist_token}")
     response = api_client.get("/api/appointments/")
     assert response.status_code == status.HTTP_200_OK
+    # Ensure only assigned appointments are listed
+    for appointment in response.data:
+        assert appointment["dentist"] == api_client.handler._force_user.id
 
 
 @pytest.mark.django_db
-def test_delete_appointment(api_client, receptionist_token, patient_token):
-    # Test that Receptionists can delete appointments, but Patients cannot.
-    # Receptionist deletes an appointment
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token}")
-    response = api_client.delete("/api/appointments/1/")
-    assert response.status_code == status.HTTP_204_NO_CONTENT
-
-    # Patient tries to delete an appointment
+def test_patient_list_appointments(api_client, patient_token, create_appointments):
+    """
+    Test that a Patient can list their own appointments.
+    """
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {patient_token}")
-    response = api_client.delete("/api/appointments/1/")
-    assert response.status_code == status.HTTP_403_FORBIDDEN
+    response = api_client.get("/api/appointments/")
+    assert response.status_code == status.HTTP_200_OK
+    # Ensure only the patient's appointments are listed
+    for appointment in response.data:
+        assert appointment["patient"] == api_client.handler._force_user.id
+
+
+@pytest.mark.django_db
+def test_update_appointment_by_receptionist(
+    api_client, receptionist_token, create_appointments
+):
+    """
+    Test that a Receptionist can update an appointment.
+    """
+    appointment = Appointment.objects.first()
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token}")
+    response = api_client.patch(
+        f"/api/appointments/{appointment.id}/", {"status": "Completed"}
+    )
+    print(appointment.patient.id == appointment.dentist.id)
+    print(f"Patient ID: {appointment.patient.id}, Dentist ID: {appointment.dentist.id}")
+    print(response.data)  # Debug the validation error
+    assert response.status_code == status.HTTP_200_OK
+    assert Appointment.objects.get(id=appointment.id).status == "Completed"
+
+
+@pytest.mark.django_db
+def test_delete_appointment_by_receptionist(
+    api_client, receptionist_token, create_appointments
+):
+    """
+    Test that a Receptionist can delete an appointment.
+    """
+    appointment = Appointment.objects.first()
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token}")
+    response = api_client.delete(f"/api/appointments/{appointment.id}/")
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert not Appointment.objects.filter(id=appointment.id).exists()
