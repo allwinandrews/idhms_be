@@ -1,12 +1,22 @@
 import pytest
 from rest_framework.test import APIClient
-from api.models import Appointment
+from api.models import Appointment, Role, User
 from django.utils.timezone import make_aware
 from datetime import datetime
 
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
+
+
+@pytest.fixture(autouse=True)
+def setup_roles():
+    """
+    Automatically populate the test database with required roles.
+    """
+    roles = ["Admin", "Dentist", "Receptionist", "Patient"]
+    for role in roles:
+        Role.objects.get_or_create(name=role)
 
 
 @pytest.fixture
@@ -20,11 +30,17 @@ def api_client():
 @pytest.fixture
 def create_user():
     """
-    Fixture to create users with email and role.
+    Fixture to create users with email, password, and roles.
     """
 
-    def _create_user(email, password, role):
-        return User.objects.create_user(email=email, password=password, role=role)
+    def _create_user(email, password, roles=None, **extra_fields):
+        """
+        Creates a user with the provided email, password, and roles.
+        """
+        role_instances = Role.objects.filter(name__in=roles) if roles else []
+        user = User.objects.create_user(email=email, password=password, **extra_fields)
+        user.roles.set(role_instances)
+        return user
 
     return _create_user
 
@@ -34,7 +50,7 @@ def admin_token(api_client, create_user):
     """
     Fixture to generate an admin user's JWT token.
     """
-    create_user(email="admin_user@example.com", password="admin_pass", role="Admin")
+    create_user(email="admin_user@example.com", password="admin_pass", roles=["Admin"])
     response = api_client.post(
         "/api/login/", {"email": "admin_user@example.com", "password": "admin_pass"}
     )
@@ -47,7 +63,7 @@ def patient_token(api_client, create_user):
     Fixture to generate a patient's JWT token.
     """
     create_user(
-        email="patient_user@example.com", password="patient_pass", role="Patient"
+        email="patient_user@example.com", password="patient_pass", roles=["Patient"]
     )
     response = api_client.post(
         "/api/login/", {"email": "patient_user@example.com", "password": "patient_pass"}
@@ -61,7 +77,7 @@ def dentist_token(api_client, create_user):
     Fixture to generate a dentist's JWT token.
     """
     create_user(
-        email="dentist_user@example.com", password="dentist_pass", role="Dentist"
+        email="dentist_user@example.com", password="dentist_pass", roles=["Dentist"]
     )
     response = api_client.post(
         "/api/login/", {"email": "dentist_user@example.com", "password": "dentist_pass"}
@@ -77,7 +93,7 @@ def receptionist_token(api_client, create_user):
     create_user(
         email="receptionist_user@example.com",
         password="receptionist_pass",
-        role="Receptionist",
+        roles=["Receptionist"],
     )
     response = api_client.post(
         "/api/login/",
@@ -91,11 +107,14 @@ def create_patients():
     """
     Fixture to create multiple patients for testing.
     """
+    # Fetch the Patient role instance from the database
+    patient_role = Role.objects.get(name="Patient")
+
+    # Create a list of patient users
     patients = [
         User.objects.create_user(
             email=f"patient{i}@example.com",
             password="password123",
-            role="Patient",
             first_name=f"Patient{i}",
             last_name="Test",
             contact_info=f"+123456789{i}",
@@ -104,6 +123,11 @@ def create_patients():
         )
         for i in range(1, 6)
     ]
+
+    # Assign the Patient role to each created user
+    for patient in patients:
+        patient.roles.add(patient_role)
+
     return patients
 
 
@@ -113,10 +137,12 @@ def create_appointments(create_user):
     Fixture to create multiple test appointments.
     """
     patient = create_user(
-        email="patient@example.com", password="password123", role="Patient"
+        email="patient@example.com", password="password123", roles=["Patient"]
     )
     dentist = create_user(
-        email="dentist@example.com", password="password123", role="Dentist"
+        email="dentist@example.com",
+        password="password123",
+        roles=["Dentist"],
     )
     return [
         Appointment.objects.create(

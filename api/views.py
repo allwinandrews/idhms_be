@@ -18,8 +18,11 @@ from api.serializers import (
 from api.permissions import IsAdmin, IsPatient, IsDentist, IsReceptionist
 
 # from api.models import User
-from api.models import Appointment
+from api.models import Appointment, Role
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -42,10 +45,12 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def get_token(cls, user):
         """
         Adds custom claims to the JWT token.
-        Includes the user's role.
+        Includes the user's roles.
         """
         token = super().get_token(user)
-        token["role"] = user.role  # Ensure the User model has a 'role' field
+        token["roles"] = list(
+            user.roles.values_list("name", flat=True)
+        )  # Add all roles to the token
         return token
 
     def validate(self, attrs):
@@ -53,7 +58,9 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         Validates user credentials and includes additional role information in the response.
         """
         data = super().validate(attrs)
-        data["role"] = self.user.role
+        data["roles"] = list(
+            self.user.roles.values_list("name", flat=True)
+        )  # Include all roles in the response
         return data
 
 
@@ -63,10 +70,8 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
 # --- Login View ---
 class LoginView(APIView):
-    """
-    API endpoint for user login.
-    Authenticates a user and returns JWT tokens along with their role.
-    """
+    # API endpoint for user login.
+    # Authenticates a user and returns JWT tokens along with their roles.
 
     permission_classes = [AllowAny]
 
@@ -74,42 +79,53 @@ class LoginView(APIView):
         email = request.data.get("email")
         password = request.data.get("password")
 
-        # Authenticate user using email
-        user = authenticate(request, username=email, password=password)
+        try:
+            # Authenticate user using email
+            user = authenticate(request, username=email, password=password)
 
-        if user is not None:
-            if not user.is_active:
+            if user is not None:
+                if not user.is_active:
+                    logger.warning(f"Inactive user login attempt: {email}")
+                    return Response(
+                        {"error": "User is inactive."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                # Retrieve all roles for the user
+                roles = list(user.roles.values_list("name", flat=True))
+
+                # Generate JWT tokens
+                refresh = RefreshToken.for_user(user)
+                update_last_login(None, user)  # Update last login timestamp
+
+                logger.info(f"User {email} logged in successfully.")
                 return Response(
-                    {"error": "User is inactive."}, status=status.HTTP_400_BAD_REQUEST
+                    {
+                        "access": str(refresh.access_token),
+                        "refresh": str(refresh),
+                        "roles": roles,  # Include user roles in the response
+                    },
+                    status=status.HTTP_200_OK,
                 )
 
-            # Dynamically set the role for superusers
-            role = (
-                "Admin" if user.is_superuser else getattr(user, "role", "Receptionist")
-            )
-
-            # Generate JWT tokens
-            refresh = RefreshToken.for_user(user)
-            update_last_login(None, user)  # Update last login timestamp
-
+            logger.warning(f"Failed login attempt for email: {email}")
             return Response(
-                {
-                    "access": str(refresh.access_token),
-                    "refresh": str(refresh),
-                    "role": role,  # Include user role in the response
-                },
-                status=status.HTTP_200_OK,
+                {"error": "Invalid email or password."},
+                status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        return Response(
-            status=status.HTTP_401_UNAUTHORIZED,
-        )
+        except Exception as e:
+            logger.error(f"Unexpected error during login: {str(e)}")
+            return Response(
+                {"error": "An unexpected error occurred."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 # --- Register View ---
 class RegisterView(APIView):
     """
-    API endpoint for user registration with validation for email, phone number, and date of birth.
+    API endpoint for user registration with support for blood group, roles, and Dependent registration.
     """
 
     permission_classes = [AllowAny]
@@ -117,54 +133,104 @@ class RegisterView(APIView):
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
-            serializer.save()
-            return Response(
-                {"message": "User registered successfully!"},
-                status=status.HTTP_201_CREATED,
-            )
+            try:
+                user = serializer.save()
+
+                # Build the response message
+                response_message = {
+                    "message": "User registered successfully!",
+                    "user_type": "Dependent" if user.guardian else "Normal User",
+                    "email": user.email,
+                    "password": (
+                        "Generated by the system"
+                        if "USER-" in user.email
+                        else "Provided by the user"
+                    ),
+                    "roles": list(
+                        user.roles.values_list("name", flat=True)
+                    ),  # Include all assigned roles
+                }
+
+                # Include guardian details if applicable
+                if user.guardian:
+                    response_message["guardian"] = {
+                        "email": user.guardian.email,
+                        "first_name": user.guardian.first_name,
+                        "last_name": user.guardian.last_name,
+                        "contact_info": user.guardian.contact_info,
+                    }
+                logger.info(f"User {user.email} registered successfully.")
+                return Response(response_message, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                logger.error(f"Unexpected error during registration: {str(e)}")
+                return Response(
+                    {"error": "An unexpected error occurred."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+        logger.warning(f"Validation failed for registration: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 # --- Patient Data View ---
 class PatientDataView(APIView):
     """
-    View to allow authenticated patients to access their data.
-    Only users with the role 'Patient' are allowed.
-    """
-
-    permission_classes = [IsAuthenticated, IsPatient]
-
-    def get(self, request):
-        user = request.user
-
-        # Safely access patient-specific fields
-        patient_data = {
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "email": user.email,
-            "contact_info": user.contact_info if user.contact_info else "N/A",
-            "dob": user.dob.strftime("%Y-%m-%d") if user.dob else "N/A",
-            "gender": user.gender if user.gender else "N/A",
-        }
-
-        return Response(patient_data, status=status.HTTP_200_OK)
-
-
-# --- Secure View (General Authenticated Access) ---
-class SecureView(APIView):
-    """
-    Example of a secure API endpoint.
-    Accessible only to authenticated users.
+    View to allow patients and optionally other roles to access patient-specific data.
     """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        return Response({"message": "This is a secure view!"})
+        user = request.user
+        roles = list(user.roles.values_list("name", flat=True))
+
+        # Check if user is a Patient or has specific access
+        if "Patient" in roles or "Admin" in roles or "Dentist" in roles:
+            # Safely access patient-specific fields
+            patient_data = {
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "email": user.email,
+                "contact_info": user.contact_info if user.contact_info else "N/A",
+                "dob": user.dob.strftime("%Y-%m-%d") if user.dob else "N/A",
+                "gender": user.gender if user.gender else "N/A",
+            }
+
+            logger.info(f"User {user.email} accessed patient data.")
+            return Response(patient_data, status=status.HTTP_200_OK)
+
+        logger.warning(f"Unauthorized access attempt by {user.email}.")
+        return Response(
+            {"detail": "You are not authorized to view this data."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+
+# --- Secure View (General Authenticated Access) ---
+class SecureView(APIView):
+    """
+    Secure endpoint to validate authentication and fetch user details.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        return Response(
+            {
+                "message": "Authentication successful!",
+                "user": {
+                    "id": request.user.id,
+                    "email": request.user.email,
+                    "roles": [role.name for role in request.user.roles.all()],
+                },
+            }
+        )
 
 
 class ReceptionistManagePatientsView(APIView):
-    # View for receptionists to manage patient records.
+    """
+    View for receptionists to manage patient records.
+    """
 
     permission_classes = [IsAuthenticated, IsReceptionist]
 
@@ -172,68 +238,26 @@ class ReceptionistManagePatientsView(APIView):
         """
         Retrieve a list of all patients.
         """
-        patients = User.objects.filter(role="Patient")
-        serialized_patients = [
-            {
-                "id": patient.id,
-                "email": patient.email,
-                "first_name": patient.first_name,
-                "last_name": patient.last_name,
-                "contact_info": patient.contact_info,
-                "gender": patient.gender,
-            }
-            for patient in patients
-        ]
-        return Response(serialized_patients, status=200)
+        patients = User.objects.filter(roles__name="Patient").values(
+            "id", "email", "first_name", "last_name", "contact_info", "gender"
+        )
+        return Response(list(patients), status=200)
 
     def post(self, request):
-        # Extract patient details from request
-        first_name = request.data.get("first_name")
-        last_name = request.data.get("last_name")
-        email = request.data.get("email")  # Allow input for real email
-        contact_info = request.data.get("contact_info", "")
-        dob = request.data.get("dob")
-        gender = request.data.get("gender")
-
-        # Basic validations
-        errors = {}
-        if not first_name:
-            errors["first_name"] = "First name is required."
-        if not last_name:
-            errors["last_name"] = "Last name is required."
-        if not email:
-            errors["email"] = "Email is required."
-        if not dob:
-            errors["dob"] = "Date of birth is required."
-        if gender not in ["Male", "Female", "Other"]:
-            errors["gender"] = "Gender must be Male, Female, or Other."
-
-        # Return detailed validation errors if any
-        if errors:
-            return Response(errors, status=400)
-
-        # Check for email uniqueness
-        if User.objects.filter(email=email).exists():
-            return Response({"error": "Email already exists."}, status=400)
-
-        # Create the patient user
-        patient = User.objects.create_user(
-            email=email,
-            password="default_password",  # Default password; can be updated later
-            role="Patient",
-            dob=dob,
-            contact_info=contact_info,
-            gender=gender,
-            first_name=first_name,
-            last_name=last_name,
-        )
-
-        return Response(
-            {
-                "message": f"Patient {patient.first_name} {patient.last_name} created successfully!"
-            },
-            status=201,
-        )
+        """
+        Add a new patient.
+        """
+        serializer = RegisterSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save(roles=["Patient"])  # Assign 'Patient' role
+            return Response(
+                {
+                    "message": f"Patient {user.first_name} {user.last_name} created successfully!"
+                },
+                status=201,
+            )
+        print("Validation errors:", serializer.errors)  # Add this for debugging
+        return Response(serializer.errors, status=400)
 
 
 # Appointment List and Create View
@@ -250,19 +274,24 @@ class AppointmentListCreateView(ListCreateAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        print(f"User Role: {user.role}, User ID: {user.id}")
-        if user.role == "Receptionist":
+        roles = list(
+            user.roles.values_list("name", flat=True)
+        )  # Retrieve all user roles
+        print(f"User Roles: {roles}, User ID: {user.id}")
+
+        if "Receptionist" in roles:
             return Appointment.objects.all()
-        elif user.role == "Dentist":
-            print(f"Querying appointments for Dentist ID: {user.id}")
+        elif "Dentist" in roles:
             return Appointment.objects.filter(dentist=user)
-        elif user.role == "Patient":
+        elif "Patient" in roles:
             return Appointment.objects.filter(patient=user)
         return Appointment.objects.none()
 
     def create(self, request, *args, **kwargs):
-        # Only Receptionists can create appointments
-        if request.user.role != "Receptionist":
+        """
+        Create a new appointment. Restricted to Receptionists.
+        """
+        if not request.user.roles.filter(name="Receptionist").exists():
             return Response(
                 {"detail": "Only receptionists can create appointments."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -283,23 +312,25 @@ class AppointmentDetailView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
 
     def update(self, request, *args, **kwargs):
-
         # Debug incoming request data
         print("Incoming Data:", request.data)
         user = request.user
-        appointment = self.get_object()
 
-        if user.role == "Receptionist":
+        # Retrieve user roles
+        roles = list(user.roles.values_list("name", flat=True))
+
+        if "Receptionist" in roles:
             # Receptionist can fully update the appointment
             return super().update(request, *args, **kwargs)
-        elif user.role in ["Dentist", "Patient"]:
+        elif "Dentist" in roles or "Patient" in roles:
             # Dentists and Patients can only request updates
             update_request = request.data.get("status", "Update Requested")
+            appointment = self.get_object()
             appointment.status = update_request  # Flag the update request
             appointment.save()
             return Response(
                 {
-                    "detail": f"Update requested by {user.role}. Receptionist will review."
+                    "detail": f"Update requested by {'Dentist' if 'Dentist' in roles else 'Patient'}. Receptionist will review."
                 },
                 status=status.HTTP_202_ACCEPTED,
             )
@@ -310,7 +341,7 @@ class AppointmentDetailView(RetrieveUpdateDestroyAPIView):
 
     def destroy(self, request, *args, **kwargs):
         # Only Receptionists can delete appointments
-        if request.user.role != "Receptionist":
+        if not request.user.roles.filter(name="Receptionist").exists():
             return Response(
                 {"detail": "Only receptionists can delete appointments."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -321,18 +352,27 @@ class AppointmentDetailView(RetrieveUpdateDestroyAPIView):
 # User List View with Role Filtering
 class UserListView(ListCreateAPIView):
     """
-    View to list users dynamically filtered by role.
-    Admins can access this endpoint.
+    View to list and create users dynamically filtered by role.
+    Only accessible by Admins.
     """
 
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def get_queryset(self):
+        """
+        Filter users dynamically by role if a 'role' query parameter is provided.
+        """
         role = self.request.query_params.get("role")
-        if role:
-            return User.objects.filter(role=role)
-        return User.objects.all()
+        try:
+            if role:
+                return User.objects.filter(roles__name=role)
+            return User.objects.all()
+        except Exception as e:
+            # Log the error (you can use logging instead of print in production)
+            print(f"Error occurred while fetching users: {e}")
+            logger.error(f"An error occurred: {str(e)}")
+            return User.objects.none()  # Return an empty queryset to fail gracefully
 
 
 # User Detail View for CRUD Operations
@@ -347,11 +387,46 @@ class UserDetailView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def update(self, request, *args, **kwargs):
-        # Ensure Admins can update the role
-        user = self.get_object()
-        if "role" in request.data:
-            user.role = request.data["role"]
-        return super().update(request, *args, **kwargs)
+        """
+        Ensure Admins can update roles dynamically for a user.
+        """
+        try:
+            user = self.get_object()
+
+            # Check if 'roles' is in the request data
+            if "roles" in request.data:
+                # Retrieve roles from request
+                new_roles = request.data["roles"]
+
+                # Validate roles against existing Role instances
+                valid_roles = Role.objects.filter(name__in=new_roles)
+                invalid_roles = set(new_roles) - set(
+                    valid_roles.values_list("name", flat=True)
+                )
+
+                if invalid_roles:
+                    return Response(
+                        {"detail": f"Invalid roles: {', '.join(invalid_roles)}."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                # Update roles for the user
+                user.roles.set(valid_roles)
+
+            # Continue with default update logic
+            return super().update(request, *args, **kwargs)
+
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "User not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        except Exception as e:
+            logger.error(f"An error occurred: {str(e)}")
+            return Response(
+                {"detail": f"An unexpected error occurred: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 # Role Management View
@@ -363,26 +438,35 @@ class RoleManagementView(APIView):
 
     permission_classes = [IsAuthenticated, IsAdmin]
 
-    def post(self, request):
-        user_id = request.data.get("user_id")
-        new_role = request.data.get("role")
-
-        if not user_id or not new_role:
+    def post(self, request, pk):
+        try:
+            user = User.objects.get(id=pk)
+        except User.DoesNotExist:
             return Response(
-                {"detail": "User ID and Role are required."},
+                {"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        new_roles = request.data.get("roles")
+        if not new_roles or not isinstance(new_roles, list):
+            return Response(
+                {"detail": "A list of roles is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        try:
-            user = User.objects.get(id=user_id)
-            user.role = new_role
-            user.save()
+        roles_to_assign = Role.objects.filter(name__in=new_roles)
+        invalid_roles = set(new_roles) - set(role.name for role in roles_to_assign)
+        if invalid_roles:
             return Response(
-                {"detail": f"Role updated to {new_role} for user {user.email}."},
-                status=status.HTTP_200_OK,
+                {"detail": f"Invalid roles: {', '.join(invalid_roles)}."},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        except User.DoesNotExist:
-            return Response(
-                {"detail": "User not found."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+
+        user.roles.set(roles_to_assign)
+        user.save()
+        return Response(
+            {
+                "detail": "Roles updated successfully.",
+                "roles": list(user.roles.values_list("name", flat=True)),
+            },
+            status=status.HTTP_200_OK,
+        )

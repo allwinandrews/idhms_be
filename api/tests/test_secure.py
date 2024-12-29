@@ -9,18 +9,22 @@ def test_secure_access_with_valid_token(api_client, create_user):
     """
     # Create a test user and log in
     user = create_user(
-        email="secure_user@example.com", password="password123", role="Patient"
+        email="secure_user@example.com", password="password123", roles=["Patient"]
     )
     response = api_client.post(
         "/api/login/", {"email": user.email, "password": "password123"}
     )
     access_token = response.data["access"]
+    print("response.data", response.data)
 
     # Access the secure endpoint with a valid token
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
     response = api_client.get("/api/secure/")
     assert response.status_code == status.HTTP_200_OK
-    assert response.data["message"] == "This is a secure view!"
+    assert response.data["message"] == "Authentication successful!"
+    assert response.data["user"]["id"] == user.id
+    assert response.data["user"]["email"] == user.email
+    assert response.data["user"]["roles"] == ["Patient"]
 
 
 @pytest.mark.django_db

@@ -13,10 +13,10 @@ def test_receptionist_create_appointment(api_client, receptionist_token, create_
     """
     # Create a test patient and dentist
     patient = create_user(
-        email="patient@example.com", password="password123", role="Patient"
+        email="patient@example.com", password="password123", roles=["Patient"]
     )
     dentist = create_user(
-        email="dentist@example.com", password="password123", role="Dentist"
+        email="dentist@example.com", password="password123", roles=["Dentist"]
     )
 
     # Define a dynamic future appointment date

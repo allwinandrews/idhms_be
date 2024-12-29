@@ -48,6 +48,8 @@ urlpatterns = [
         "api/users/<int:pk>/", UserDetailView.as_view(), name="user_detail"
     ),  # Retrieve/Update/Delete user
     path(
-        "api/users/roles/", RoleManagementView.as_view(), name="role_management"
-    ),  # Role management
+        "api/users/<int:pk>/roles/",
+        RoleManagementView.as_view(),
+        name="role_management",
+    ),
 ]

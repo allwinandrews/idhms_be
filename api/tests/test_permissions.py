@@ -1,4 +1,6 @@
+import uuid
 import pytest
+from rest_framework import status
 
 
 @pytest.mark.django_db
@@ -7,9 +9,9 @@ def test_admin_only_view(api_client, create_user):
     Test access to admin-only endpoint.
     """
     # Create an admin user and a regular patient user
-    create_user(email="admin_user@example.com", password="admin_pass", role="Admin")
+    create_user(email="admin_user@example.com", password="admin_pass", roles=["Admin"])
     create_user(
-        email="patient_user@example.com", password="patient_pass", role="Patient"
+        email="patient_user@example.com", password="patient_pass", roles=["Patient"]
     )
 
     # Admin login
@@ -45,7 +47,7 @@ def test_patient_data_view(api_client, create_user):
     """
     # Create patient user
     create_user(
-        email="patient_user@example.com", password="patient_pass", role="Patient"
+        email="patient_user@example.com", password="patient_pass", roles=["Patient"]
     )
 
     # Patient login
@@ -68,7 +70,7 @@ def test_patient_access(api_client, create_user):
     """
     # Create patient user
     create_user(
-        email="patient_user@example.com", password="patient_pass", role="Patient"
+        email="patient_user@example.com", password="patient_pass", roles=["Patient"]
     )
 
     # Patient login
@@ -89,7 +91,7 @@ def test_dentist_appointments_access(api_client, create_user):
     # Test access to dentist appointments endpoint for Dentist role.
     # Create dentist user
     create_user(
-        email="dentist_user@example.com", password="dentist_pass", role="Dentist"
+        email="dentist_user@example.com", password="dentist_pass", roles=["Dentist"]
     )
 
     # Dentist login
@@ -106,38 +108,47 @@ def test_dentist_appointments_access(api_client, create_user):
     assert response.status_code == 200
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_receptionist_manage_patients(api_client, receptionist_token):
     """
     Test that Receptionists can manage patient records.
     """
     # Receptionist access
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token}")
+
+    # Create a patient with unique email
+    unique_email = f"john.doe+{uuid.uuid4().hex}@example.com"
     response = api_client.post(
         "/api/receptionist/manage-patients/",
         {
             "first_name": "John",
             "last_name": "Doe",
-            "email": "john.doe@example.com",
+            "email": unique_email,  # Generate unique email
             "contact_info": "+1234567890",
             "dob": "1990-05-15",
             "gender": "Male",
+            "blood_group": "O+",
         },
     )
-    assert response.status_code == 201
-    assert response.data["message"] == "Patient John Doe created successfully!"
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data["message"] == f"Patient John Doe created successfully!"
 
     # Duplicate email test
     response = api_client.post(
         "/api/receptionist/manage-patients/",
         {
-            "first_name": "John",
+            "first_name": "Jane",
             "last_name": "Doe",
-            "email": "john.doe@example.com",  # Reuse the same email
+            "email": unique_email,  # Reuse the same email
             "contact_info": "+9876543210",
             "dob": "1995-01-01",
             "gender": "Female",
+            "blood_group": "A-",  # Add the required field
         },
     )
-    assert response.status_code == 400
-    assert response.data["error"] == "Email already exists."
+    print("response", response.data)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    # Check for validation error
+    assert "email" in response.data
+    assert response.data["email"][0] == "Email already exists."

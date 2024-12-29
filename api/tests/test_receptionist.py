@@ -18,6 +18,7 @@ def test_receptionist_create_patient(api_client, receptionist_token):
             "contact_info": "+1234567890",
             "dob": "1990-01-01",
             "gender": "Male",
+            "blood_group": "A+",
         },
     )
     print(response.data)
@@ -30,10 +31,20 @@ def test_receptionist_list_patients(api_client, receptionist_token, create_patie
     """
     Test that a Receptionist can list all patients.
     """
+    # Authenticate as receptionist
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token}")
+
+    # Fetch the patient list
     response = api_client.get("/api/receptionist/manage-patients/")
     assert response.status_code == status.HTTP_200_OK
+
+    # Validate the number of patients retrieved
     assert len(response.data) == len(create_patients)
+
+    # Ensure the data matches the created patients
+    retrieved_emails = [patient["email"] for patient in response.data]
+    created_emails = [patient.email for patient in create_patients]
+    assert set(retrieved_emails) == set(created_emails)
 
 
 @pytest.mark.django_db

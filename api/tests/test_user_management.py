@@ -8,8 +8,8 @@ def test_admin_list_users(api_client, create_user, admin_token):
     Test that an Admin can list all users and filter by role.
     """
     # Create test users
-    create_user(email="dentist@example.com", password="password123", role="Dentist")
-    create_user(email="patient@example.com", password="password123", role="Patient")
+    create_user(email="dentist@example.com", password="password123", roles=["Dentist"])
+    create_user(email="patient@example.com", password="password123", roles=["Patient"])
 
     # Admin lists all users
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin_token}")
@@ -30,7 +30,7 @@ def test_admin_retrieve_user(api_client, create_user, admin_token):
     Test that an Admin can retrieve a specific user's details.
     """
     user = create_user(
-        email="patient@example.com", password="password123", role="Patient"
+        email="patient@example.com", password="password123", roles=["Patient"]
     )
 
     # Admin retrieves the user's details
@@ -46,7 +46,7 @@ def test_admin_update_user(api_client, create_user, admin_token):
     Test that an Admin can update a specific user's details, including the role.
     """
     user = create_user(
-        email="receptionist@example.com", password="password123", role="Receptionist"
+        email="receptionist@example.com", password="password123", roles=["Receptionist"]
     )
 
     # Admin updates the user's details
@@ -57,12 +57,13 @@ def test_admin_update_user(api_client, create_user, admin_token):
             "email": "receptionist@example.com",
             "first_name": "Updated",
             "last_name": "User",
-            "role": "Patient",  # Update the role to Patient
+            "roles": ["Patient"],  # Update the role to Patient
         },
+        format="json",  # Explicitly set JSON format
     )
     assert response.status_code == status.HTTP_200_OK
     assert response.data["first_name"] == "Updated"
-    assert response.data["role"] == "Patient"  # Confirm the role update
+    assert response.data["roles"] == ["Patient"]  # Confirm the role update
 
 
 @pytest.mark.django_db
@@ -71,7 +72,7 @@ def test_admin_delete_user(api_client, create_user, admin_token):
     Test that an Admin can delete a specific user.
     """
     user = create_user(
-        email="deletethis@example.com", password="password123", role="Dentist"
+        email="deletethis@example.com", password="password123", roles=["Dentist"]
     )
 
     # Admin deletes the user
