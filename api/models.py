@@ -3,6 +3,8 @@ from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.utils.crypto import get_random_string  # For generating unique baby IDs
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
+from datetime import date
+from django.core.validators import RegexValidator
 
 
 class CustomUserManager(BaseUserManager):
@@ -54,6 +56,7 @@ class Role(models.Model):
     name = models.CharField(
         max_length=20,
         unique=True,
+        help_text="The unique name of the role (e.g., Admin, Patient, etc.).",
     )
 
     def __str__(self):
@@ -84,7 +87,7 @@ class User(AbstractUser):
     ]
 
     username = None  # Remove the username field
-    email = models.EmailField(unique=True)  # Use email as the unique identifier
+    email = models.EmailField(unique=True, db_index=True)
     roles = models.ManyToManyField(
         Role,
         related_name="users",
@@ -92,7 +95,17 @@ class User(AbstractUser):
         help_text=_("Assign one or more roles to the user."),
     )
     dob = models.DateField(blank=True, null=True)
-    contact_info = models.CharField(max_length=15, blank=True, null=True)
+    contact_info = models.CharField(
+        max_length=15,
+        blank=True,
+        null=True,
+        validators=[
+            RegexValidator(
+                regex=r"^\+?[1-9]\d{1,14}$",
+                message="Enter a valid phone number in international format (e.g., +123456789).",
+            )
+        ],
+    )
     gender = models.CharField(
         max_length=10,
         choices=[("Male", "Male"), ("Female", "Female"), ("Other", "Other")],
@@ -126,8 +139,24 @@ class User(AbstractUser):
 
     objects = CustomUserManager()
 
+    def clean(self):
+        super().clean()
+        if (
+            self.guardian
+            and self.guardian.dob
+            and self.guardian.dob >= date.today().replace(year=date.today().year - 18)
+        ):
+            raise serializers.ValidationError(
+                {"guardian": "Guardian must be at least 18 years old."}
+            )
+
     def __str__(self):
-        return f"{self.email} ({', '.join(self.roles.values_list('name', flat=True))})"
+        roles = (
+            ", ".join(self.roles.values_list("name", flat=True))
+            if self.roles.exists()
+            else "No Roles"
+        )
+        return f"{self.email} ({roles})"
 
 
 class Appointment(models.Model):
