@@ -1,5 +1,6 @@
 import pytest
 from rest_framework import status
+from api.models import Role
 
 
 @pytest.mark.django_db
@@ -112,3 +113,45 @@ def test_no_token_access_users(api_client):
     # Attempt to retrieve a specific user without a token
     response = api_client.get("/api/users/1/")
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+@pytest.mark.django_db
+def test_filter_users_by_role(api_client, admin_token, create_user):
+    """
+    Test filtering users by role using query parameters.
+    """
+    # Set up users with different roles
+    create_user(email="dentist1@example.com", password="password123", roles=["Dentist"])
+    create_user(
+        email="receptionist1@example.com",
+        password="password123",
+        roles=["Receptionist"],
+    )
+    create_user(email="patient1@example.com", password="password123", roles=["Patient"])
+
+    # Authenticate as admin
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin_token}")
+    # Test with no query parameter (exclude admin users)
+    response = api_client.get("/api/users/")
+    print("response", response)
+    assert response.status_code == status.HTTP_200_OK
+
+    # Exclude admin users manually in the test
+    non_admin_users = [user for user in response.data if "Admin" not in user["roles"]]
+    assert len(non_admin_users) == 3
+
+    # Test filtering by role
+    response = api_client.get("/api/users/?role=Dentist")
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data) == 1
+    assert response.data[0]["email"] == "dentist1@example.com"
+
+    response = api_client.get("/api/users/?role=Receptionist")
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data) == 1
+    assert response.data[0]["email"] == "receptionist1@example.com"
+
+    response = api_client.get("/api/users/?role=Patient")
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.data) == 1
+    assert response.data[0]["email"] == "patient1@example.com"

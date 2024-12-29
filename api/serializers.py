@@ -3,7 +3,6 @@ from api.models import Appointment, Role
 import re
 from datetime import date
 
-# from datetime import date,datetime
 from django.utils.timezone import is_aware, make_aware, now
 from django.utils.crypto import get_random_string  # For generating unique baby IDs
 
@@ -19,7 +18,14 @@ class UserSerializer(serializers.ModelSerializer):
     """
 
     email = serializers.EmailField(required=True)
-    contact_info = serializers.CharField(required=False)
+    contact_info = serializers.RegexField(
+        regex=r"^\+?[1-9]\d{1,14}$",
+        required=False,
+        error_messages={
+            "invalid": "Enter a valid phone number in international format (e.g., +123456789)."
+        },
+    )
+
     gender = serializers.ChoiceField(
         choices=[("Male", "Male"), ("Female", "Female"), ("Other", "Other")],
         required=False,
@@ -51,7 +57,14 @@ class GuardianSerializer(serializers.Serializer):
     last_name = serializers.CharField(max_length=100, required=True)
     email = serializers.EmailField(required=False)
     password = serializers.CharField(write_only=True, required=False)
-    contact_info = serializers.CharField(max_length=15, required=False)
+    contact_info = serializers.RegexField(
+        regex=r"^\+?[1-9]\d{1,14}$",
+        required=False,
+        error_messages={
+            "invalid": "Enter a valid phone number in international format (e.g., +123456789)."
+        },
+    )
+
     roles = serializers.SlugRelatedField(
         many=True, queryset=Role.objects.all(), slug_field="name", required=True
     )
@@ -81,7 +94,13 @@ class RegisterSerializer(serializers.ModelSerializer):
     Supports inline guardian registration for baby accounts.
     """
 
-    contact_info = serializers.CharField(max_length=15, required=False)
+    contact_info = serializers.RegexField(
+        regex=r"^\+?[1-9]\d{1,14}$",
+        required=False,
+        error_messages={
+            "invalid": "Enter a valid phone number in international format (e.g., +123456789)."
+        },
+    )
     email = serializers.EmailField(required=False)
     first_name = serializers.CharField(max_length=100, required=True)
     last_name = serializers.CharField(max_length=100, required=True)
