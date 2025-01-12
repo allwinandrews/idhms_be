@@ -54,7 +54,7 @@ def admin_token(api_client, create_user):
     response = api_client.post(
         "/api/login/", {"email": "admin_user@example.com", "password": "admin_pass"}
     )
-    return response.data["access"]
+    return response.cookies.get("access_token")
 
 
 @pytest.fixture
@@ -68,7 +68,7 @@ def patient_token(api_client, create_user):
     response = api_client.post(
         "/api/login/", {"email": "patient_user@example.com", "password": "patient_pass"}
     )
-    return response.data["access"]
+    return response.cookies.get("access_token")
 
 
 @pytest.fixture
@@ -82,7 +82,7 @@ def dentist_token(api_client, create_user):
     response = api_client.post(
         "/api/login/", {"email": "dentist_user@example.com", "password": "dentist_pass"}
     )
-    return response.data["access"]
+    return response.cookies.get("access_token")
 
 
 @pytest.fixture
@@ -99,7 +99,7 @@ def receptionist_token(api_client, create_user):
         "/api/login/",
         {"email": "receptionist_user@example.com", "password": "receptionist_pass"},
     )
-    return response.data["access"]
+    return response.cookies.get("access_token")
 
 
 @pytest.fixture

@@ -21,7 +21,7 @@ def test_receptionist_create_appointment(api_client, receptionist_token, create_
 
     # Define a dynamic future appointment date
     appointment_date = now() + timedelta(days=1)  # Always 1 day ahead
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token}")
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token.value}")
     response = api_client.post(
         "/api/appointments/",
         {
@@ -42,7 +42,7 @@ def test_receptionist_list_appointments(
     """
     Test that a Receptionist can list all appointments.
     """
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token}")
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token.value}")
     response = api_client.get("/api/appointments/")
     assert response.status_code == status.HTTP_200_OK
     assert len(response.data) == Appointment.objects.count()
@@ -53,7 +53,7 @@ def test_dentist_list_appointments(api_client, dentist_token, create_appointment
     """
     Test that a Dentist can list their assigned appointments.
     """
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {dentist_token}")
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {dentist_token.value}")
     response = api_client.get("/api/appointments/")
     assert response.status_code == status.HTTP_200_OK
     # Ensure only assigned appointments are listed
@@ -66,7 +66,7 @@ def test_patient_list_appointments(api_client, patient_token, create_appointment
     """
     Test that a Patient can list their own appointments.
     """
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {patient_token}")
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {patient_token.value}")
     response = api_client.get("/api/appointments/")
     assert response.status_code == status.HTTP_200_OK
     # Ensure only the patient's appointments are listed
@@ -82,7 +82,7 @@ def test_update_appointment_by_receptionist(
     Test that a Receptionist can update an appointment.
     """
     appointment = Appointment.objects.first()
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token}")
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token.value}")
     response = api_client.patch(
         f"/api/appointments/{appointment.id}/", {"status": "Completed"}
     )
@@ -101,7 +101,7 @@ def test_delete_appointment_by_receptionist(
     Test that a Receptionist can delete an appointment.
     """
     appointment = Appointment.objects.first()
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token}")
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token.value}")
     response = api_client.delete(f"/api/appointments/{appointment.id}/")
     assert response.status_code == status.HTTP_204_NO_CONTENT
     assert not Appointment.objects.filter(id=appointment.id).exists()

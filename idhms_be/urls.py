@@ -1,10 +1,10 @@
 from django.contrib import admin
 from django.urls import path
-from rest_framework_simplejwt.views import TokenRefreshView
 from api.views import (
     RegisterView,
     SecureView,
     CustomTokenObtainPairView,
+    CustomTokenRefreshView,
     AdminOnlyView,
     PatientDataView,
     ReceptionistManagePatientsView,
@@ -20,7 +20,8 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     # Authentication Endpoints
     path("api/login/", CustomTokenObtainPairView.as_view(), name="token_obtain_pair"),
-    path("api/login/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    # path("api/login/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    path("api/login/refresh/", CustomTokenRefreshView.as_view(), name="token_refresh"),
     path("api/register/", RegisterView.as_view(), name="register"),
     # Secure General View
     path("api/secure/", SecureView.as_view(), name="secure_view"),

@@ -14,11 +14,11 @@ def test_secure_access_with_valid_token(api_client, create_user):
     response = api_client.post(
         "/api/login/", {"email": user.email, "password": "password123"}
     )
-    access_token = response.data["access"]
+    access_token = response.cookies.get("access_token")
     print("response.data", response.data)
 
     # Access the secure endpoint with a valid token
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token.value}")
     response = api_client.get("/api/secure/")
     assert response.status_code == status.HTTP_200_OK
     assert response.data["message"] == "Authentication successful!"

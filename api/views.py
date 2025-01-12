@@ -1,5 +1,9 @@
 from django.shortcuts import render
 from rest_framework.views import APIView
+from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -36,6 +40,7 @@ class AdminOnlyView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def get(self, request):
+        print(f"User: {request.user}, Roles: {request.user.roles.all()}")
         return Response({"message": "Welcome, Admin!"})
 
 
@@ -66,6 +71,111 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
+
+    def post(self, request, *args, **kwargs):
+        """
+        Override post method to include tokens in HttpOnly cookies.
+        """
+        serializer = self.get_serializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except AuthenticationFailed:
+            return Response(
+                {"detail": "No active account found with the given credentials."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Access and refresh tokens
+        access_token = serializer.validated_data["access"]
+        refresh_token = serializer.validated_data["refresh"]
+
+        response = Response({"message": "Login successful!"}, status=status.HTTP_200_OK)
+
+        # Set tokens in HttpOnly cookies
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=True,  # Set to True in production
+            samesite="Lax",  # Adjust based on your needs
+        )
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=True,  # Set to True in production
+            samesite="Lax",
+        )
+
+        return response
+
+
+class CustomTokenRefreshView(TokenRefreshView):
+    """
+    Custom Token Refresh View to handle refresh tokens stored in HttpOnly cookies.
+    """
+
+    def post(self, request, *args, **kwargs):
+        # Extract the refresh token from the HttpOnly cookie
+        print("All cookies in the request:", request.COOKIES)
+        print("All headers in the request:", request.headers)
+        refresh_token = request.COOKIES.get("refresh_token")
+        if not refresh_token:
+            print("Refresh token not found in cookies.")
+            # Token is missing
+            return Response(
+                {"detail": "Refresh token is missing."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # Validate the refresh token explicitly
+        try:
+            token = RefreshToken(refresh_token)
+            token.check_exp()  # Check if the token is expired
+            print("Token is valid.")
+        except TokenError as e:
+            print("Invalid token:", str(e))
+            return Response(
+                {"detail": "Invalid refresh token."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        # Prepare data for the serializer
+        data = {"refresh": refresh_token}
+        serializer = self.get_serializer(data=data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except InvalidToken:
+            return Response(
+                {"detail": "Invalid refresh token."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Extract the new access token from the serializer
+        new_access_token = serializer.validated_data.get("access")
+        if not new_access_token:
+            return Response(
+                {"detail": "Failed to generate a new access token."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Set the new access token in an HttpOnly cookie
+        response = Response(
+            {"message": "Token refreshed successfully!"}, status=status.HTTP_200_OK
+        )
+        response.set_cookie(
+            key="access_token",
+            value=new_access_token,
+            httponly=True,
+            secure=True,  # Set to True in production
+            samesite="Strict",  # Use "Lax" or "Strict" based on your CSRF strategy
+        )
+
+        return response
 
 
 # --- Login View ---
@@ -387,23 +497,34 @@ class UserDetailView(RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def update(self, request, *args, **kwargs):
-        """
-        Ensure Admins can update roles dynamically for a user.
-        """
         try:
             user = self.get_object()
+            print("request.data", request.data)
+
+            # Inject the current email if not provided in request data
+            if "email" not in request.data:
+                request.data["email"] = user.email
 
             # Check if 'roles' is in the request data
             if "roles" in request.data:
-                # Retrieve roles from request
-                new_roles = request.data["roles"]
+                roles = request.data.get("roles")
 
-                # Validate roles against existing Role instances
-                valid_roles = Role.objects.filter(name__in=new_roles)
-                invalid_roles = set(new_roles) - set(
+                # Convert to list if roles is a string
+                if isinstance(roles, str):
+                    roles = [r.strip() for r in roles.split(",")]
+
+                # Check if roles is now a valid list
+                if not isinstance(roles, list):
+                    return Response(
+                        {"detail": "Roles should be a list of valid role names."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                # Validate and update roles
+                valid_roles = Role.objects.filter(name__in=roles)
+                invalid_roles = set(roles) - set(
                     valid_roles.values_list("name", flat=True)
                 )
-
                 if invalid_roles:
                     return Response(
                         {"detail": f"Invalid roles: {', '.join(invalid_roles)}."},
@@ -412,8 +533,9 @@ class UserDetailView(RetrieveUpdateDestroyAPIView):
 
                 # Update roles for the user
                 user.roles.set(valid_roles)
+                logger.info(f"Roles updated for user {user.id}: {roles}")
 
-            # Continue with default update logic
+            # Continue with default update logic for other fields
             return super().update(request, *args, **kwargs)
 
         except User.DoesNotExist:

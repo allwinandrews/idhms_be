@@ -106,8 +106,8 @@ def test_login_user(api_client, create_user):
         "/api/login/", {"email": "validuser@example.com", "password": "testpassword"}
     )
     assert response.status_code == status.HTTP_200_OK
-    assert "access" in response.data
-    assert "refresh" in response.data
+    assert response.cookies.get("access_token") is not None
+    assert response.cookies.get("refresh_token") is not None
 
     # Negative: Invalid password
     response = api_client.post(
@@ -115,7 +115,7 @@ def test_login_user(api_client, create_user):
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert (
-        response.data["detail"] == "No active account found with the given credentials"
+        response.data["detail"] == "No active account found with the given credentials."
     )
 
     # Negative: Unregistered email
@@ -123,6 +123,9 @@ def test_login_user(api_client, create_user):
         "/api/login/", {"email": "unregistered@example.com", "password": "password123"}
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert (
+        response.data["detail"] == "No active account found with the given credentials."
+    )
 
 
 @pytest.mark.django_db
@@ -137,14 +140,31 @@ def test_token_refresh(api_client, create_user):
     response = api_client.post(
         "/api/login/", {"email": "refreshuser@example.com", "password": "testpassword"}
     )
-    refresh_token = response.data["refresh"]
+    assert response.status_code == status.HTTP_200_OK
+
+    refresh_token = response.cookies.get("refresh_token")
+    print("Refresh token obtained:", refresh_token)
 
     # Positive: Valid refresh token
-    response = api_client.post("/api/login/refresh/", {"refresh": refresh_token})
+    response = api_client.post(
+        "/api/login/refresh/", {}, cookies={"refresh_token": refresh_token.value}
+    )
     assert response.status_code == status.HTTP_200_OK
-    assert "access" in response.data
+    assert response.cookies.get("access_token") is not None
 
-    # Negative: Invalid refresh token
-    response = api_client.post("/api/login/refresh/", {"refresh": "invalidtoken"})
+
+@pytest.mark.django_db
+def test_token_refresh_invalid_token(api_client):
+    """
+    Test token refresh with an invalid token.
+    """
+    # Attempt to refresh with a completely invalid token
+    api_client.cookies["refresh_token"] = "invalid.refresh.token"
+    # print("Test client cookies before request:", api_client.cookies)
+    response = api_client.post("/api/login/refresh/", {})
+    # print("Response cookies:", response.cookies)
+    # print("Response for invalid token:", response.data)
+
+    # Ensure the response returns a 401 status with the correct error message
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    assert "detail" in response.data
+    assert response.data["detail"] == "Invalid refresh token."

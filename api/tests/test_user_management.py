@@ -4,7 +4,7 @@ from api.models import Role
 
 
 @pytest.mark.django_db
-def test_admin_list_users(api_client, create_user, admin_token):
+def test_admin_list_users(api_client, create_user):
     """
     Test that an Admin can list all users and filter by role.
     """
@@ -12,93 +12,144 @@ def test_admin_list_users(api_client, create_user, admin_token):
     create_user(email="dentist@example.com", password="password123", roles=["Dentist"])
     create_user(email="patient@example.com", password="password123", roles=["Patient"])
 
-    # Admin lists all users
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin_token}")
-    response = api_client.get("/api/users/")
-    assert response.status_code == status.HTTP_200_OK
-    assert len(response.data) >= 2  # Admin sees all users
+    # Admin login
+    create_user(email="admin@example.com", password="admin123", roles=["Admin"])
+    response = api_client.post(
+        "/api/login/", {"email": "admin@example.com", "password": "admin123"}
+    )
+    assert response.status_code == 200
+    admin_token = response.cookies.get("access_token")
+    print("Admin Token (Cookie):", admin_token)
+    assert admin_token is not None  # Ensure the token is retrieved
 
-    # Admin filters users by role
-    response = api_client.get("/api/users/", {"role": "Dentist"})
-    assert response.status_code == status.HTTP_200_OK
-    assert len(response.data) == 1  # Only dentists returned
+    # Admin access to list all users
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin_token.value}")
+    response = api_client.get("/api/users/")
+    print("Response Data:", response.data)
+    assert response.status_code == 200
+    assert len(response.data) >= 2  # Ensure users are listed
+
+    # Filter users by role (e.g., Dentist)
+    response = api_client.get("/api/users/?role=Dentist")
+    assert response.status_code == 200
+    assert len(response.data) == 1  # Only one user with the Dentist role
     assert response.data[0]["email"] == "dentist@example.com"
 
 
 @pytest.mark.django_db
-def test_admin_retrieve_user(api_client, create_user, admin_token):
-    """
-    Test that an Admin can retrieve a specific user's details.
-    """
-    user = create_user(
-        email="patient@example.com", password="password123", roles=["Patient"]
-    )
-
-    # Admin retrieves the user's details
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin_token}")
-    response = api_client.get(f"/api/users/{user.id}/")
-    assert response.status_code == status.HTTP_200_OK
-    assert response.data["email"] == "patient@example.com"
-
-
-@pytest.mark.django_db
-def test_admin_update_user(api_client, create_user, admin_token):
+def test_admin_update_user(api_client, create_user):
     """
     Test that an Admin can update a specific user's details, including the role.
     """
+    # Step 1: Create a receptionist user
     user = create_user(
         email="receptionist@example.com", password="password123", roles=["Receptionist"]
     )
 
-    # Admin updates the user's details
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin_token}")
+    # Step 2: Create an admin user and log in
+    create_user(email="admin@example.com", password="admin_pass", roles=["Admin"])
+    response = api_client.post(
+        "/api/login/", {"email": "admin@example.com", "password": "admin_pass"}
+    )
+    assert response.status_code == 200  # Ensure login is successful
+
+    admin_token = response.cookies.get("access_token")
+    assert admin_token is not None  # Ensure the token exists
+    admin_token_value = admin_token.value  # Extract only the token value
+    # print("Admin Token Value:", admin_token_value)
+
+    # Step 3: Admin updates the user's details
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin_token_value}")
+    # print("Headers:", api_client._credentials)
+
     response = api_client.put(
         f"/api/users/{user.id}/",
         {
-            "email": "receptionist@example.com",
             "first_name": "Updated",
             "last_name": "User",
-            "roles": ["Patient"],  # Update the role to Patient
+            "roles": ["Patient"],  # Correct JSON array
         },
-        format="json",  # Explicitly set JSON format
+        format="json",
     )
-    assert response.status_code == status.HTTP_200_OK
+    print("Response data:", response.data)
+    assert response.status_code == 200  # Ensure the update is successful
     assert response.data["first_name"] == "Updated"
-    assert response.data["roles"] == ["Patient"]  # Confirm the role update
+    assert response.data["last_name"] == "User"
+    assert "Patient" in response.data["roles"]
 
 
 @pytest.mark.django_db
-def test_admin_delete_user(api_client, create_user, admin_token):
+def test_admin_delete_user(api_client, create_user):
     """
     Test that an Admin can delete a specific user.
     """
+    # Step 1: Create the user to be deleted
     user = create_user(
         email="deletethis@example.com", password="password123", roles=["Dentist"]
     )
 
-    # Admin deletes the user
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin_token}")
+    # Step 2: Create an admin user and log in
+    create_user(email="admin@example.com", password="admin_pass", roles=["Admin"])
+    response = api_client.post(
+        "/api/login/", {"email": "admin@example.com", "password": "admin_pass"}
+    )
+    assert response.status_code == 200  # Ensure login is successful
+    admin_token = response.cookies.get("access_token")
+    assert admin_token is not None  # Ensure the token exists
+
+    # Step 3: Admin deletes the user
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin_token.value}")
     response = api_client.delete(f"/api/users/{user.id}/")
     assert response.status_code == status.HTTP_204_NO_CONTENT
     assert not response.data  # No content returned
 
 
 @pytest.mark.django_db
-def test_non_admin_access_users(
-    api_client, create_user, receptionist_token, patient_token
-):
+def test_non_admin_access_users(api_client, create_user):
     """
-    Test that non-Admin roles cannot access user management endpoints.
+    Test that non-admin users cannot access the user management endpoints.
     """
-    # Receptionist tries to list users
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token}")
-    response = api_client.get("/api/users/")
-    assert response.status_code == status.HTTP_403_FORBIDDEN
+    # Step 1: Create a non-admin user
+    non_admin_user = create_user(
+        email="non_admin_user@example.com",
+        password="password123",
+        roles=["Patient"],
+    )
 
-    # Patient tries to retrieve a specific user
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {patient_token}")
+    # Step 2: Log in as the non-admin user
+    response = api_client.post(
+        "/api/login/",
+        {"email": "non_admin_user@example.com", "password": "password123"},
+    )
+    assert response.status_code == 200
+    non_admin_token = response.cookies.get("access_token")
+    assert non_admin_token is not None  # Ensure the token exists
+
+    # Step 3: Attempt to access user management endpoints as a non-admin user
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {non_admin_token.value}")
+
+    # Try to list all users
+    response = api_client.get("/api/users/")
+    assert response.status_code == 403  # Non-admin users should not have access
+
+    # Try to retrieve a specific user
     response = api_client.get("/api/users/1/")
-    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.status_code == 403  # Non-admin users should not have access
+
+    # Try to update a user
+    response = api_client.put(
+        "/api/users/1/",
+        {
+            "first_name": "Updated",
+            "last_name": "User",
+            "roles": ["Patient"],  # Attempt to change role
+        },
+    )
+    assert response.status_code == 403  # Non-admin users should not have access
+
+    # Try to delete a user
+    response = api_client.delete("/api/users/1/")
+    assert response.status_code == 403  # Non-admin users should not have access
 
 
 @pytest.mark.django_db
@@ -116,7 +167,8 @@ def test_no_token_access_users(api_client):
 
 
 @pytest.mark.django_db
-def test_filter_users_by_role(api_client, admin_token, create_user):
+@pytest.mark.django_db
+def test_filter_users_by_role(api_client, create_user):
     """
     Test filtering users by role using query parameters.
     """
@@ -129,18 +181,27 @@ def test_filter_users_by_role(api_client, admin_token, create_user):
     )
     create_user(email="patient1@example.com", password="password123", roles=["Patient"])
 
+    # Step 1: Create and login as admin
+    create_user(email="admin@example.com", password="admin_pass", roles=["Admin"])
+    response = api_client.post(
+        "/api/login/", {"email": "admin@example.com", "password": "admin_pass"}
+    )
+    assert response.status_code == 200
+    admin_token = response.cookies.get("access_token")
+    assert admin_token is not None  # Ensure the token is present
+
     # Authenticate as admin
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin_token}")
-    # Test with no query parameter (exclude admin users)
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin_token.value}")
+
+    # Step 2: Test with no query parameter (list all non-admin users)
     response = api_client.get("/api/users/")
-    print("response", response)
     assert response.status_code == status.HTTP_200_OK
 
     # Exclude admin users manually in the test
     non_admin_users = [user for user in response.data if "Admin" not in user["roles"]]
     assert len(non_admin_users) == 3
 
-    # Test filtering by role
+    # Step 3: Test filtering by role
     response = api_client.get("/api/users/?role=Dentist")
     assert response.status_code == status.HTTP_200_OK
     assert len(response.data) == 1

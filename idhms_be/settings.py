@@ -57,10 +57,19 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
 }
 
+# Cookie settings
+CSRF_COOKIE_SECURE = True  # Use True in production
+SESSION_COOKIE_SECURE = True  # Use True in production
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"  # Adjust based on your needs
+
+# CORS settings
+CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  # React app
     "http://127.0.0.1:3000",
 ]
+
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
