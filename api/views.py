@@ -18,6 +18,7 @@ from api.serializers import (
     AppointmentSerializer,
     UserSerializer,
     # RoleSerializer,
+    BulkRegisterSerializer,
 )
 from api.permissions import IsAdmin, IsPatient, IsDentist, IsReceptionist
 
@@ -74,7 +75,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
     def post(self, request, *args, **kwargs):
         """
-        Override post method to include tokens in HttpOnly cookies.
+        Override post method to include tokens and roles in HttpOnly cookies.
         """
         serializer = self.get_serializer(data=request.data)
         try:
@@ -91,7 +92,17 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         access_token = serializer.validated_data["access"]
         refresh_token = serializer.validated_data["refresh"]
 
-        response = Response({"message": "Login successful!"}, status=status.HTTP_200_OK)
+        # Retrieve user's roles
+        user = serializer.user
+        roles = list(user.roles.values_list("name", flat=True))
+
+        response = Response(
+            {
+                "message": "Login successful!",
+                "roles": roles,  # Include roles in the response
+            },
+            status=status.HTTP_200_OK,
+        )
 
         # Set tokens in HttpOnly cookies
         response.set_cookie(
@@ -280,6 +291,45 @@ class RegisterView(APIView):
 
         logger.warning(f"Validation failed for registration: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class BulkRegisterView(APIView):
+    """
+    API endpoint for bulk user registration with inline guardian support.
+    """
+
+    permission_classes = [IsAuthenticated, IsAdmin]
+
+    def post(self, request):
+        # Instantiate the serializer with request data
+        serializer = BulkRegisterSerializer(data=request.data)
+
+        if serializer.is_valid():
+            try:
+                # Save validated users
+                result = (
+                    serializer.save()
+                )  # result contains success_count, failed_count, and details
+
+                # Construct response using serializer output
+                logger.info(f"{result['success_count']} users registered successfully.")
+                return Response(result, status=status.HTTP_201_CREATED)
+
+            except Exception as e:
+                logger.error(f"Unexpected error during bulk registration: {str(e)}")
+                return Response(
+                    {"error": "An unexpected error occurred."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+        # Handle validation errors
+        logger.warning(f"Validation failed for bulk registration: {serializer.errors}")
+        response_data = {
+            "success_count": 0,
+            "failed_count": len(request.data.get("users", [])),
+            "details": serializer.errors,  # Include validation errors in the response
+        }
+        return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
 
 
 # --- Patient Data View ---

@@ -1,0 +1,33 @@
+cd C:\Users\user\Desktop\IDHMS\idhms_be\ && venv\Scripts\activate
+python manage.py runserver
+
+cd C:\Users\user\Desktop\IDHMS\idhms_be\ && venv\Scripts\activate && python manage.py runserver
+
+# Run the database initialization script to create tables
+python main.py
+
+
+# Run all tests using pytest
+pytest api/tests/
+
+# If you add new dependencies, update requirements.txt
+pip freeze > requirements.txt
+
+# Deactivate the virtual environment
+deactivate
+
+superuser
+admin
+Omgomg@admin333
+
+python manage.py shell
+
+from django.contrib.auth import get_user_model
+model = get_user_model()
+model.objects.get(username="admin", is_superuser=True).delete()
+exit()
+
+ psql -U postgres -h localhost
+
+Run tests
+pytest api/tests/

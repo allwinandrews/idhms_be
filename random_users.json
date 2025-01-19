@@ -1,0 +1,597 @@
+{
+    "users": [
+        {
+            "email": "randallgreen@example.net",
+            "password": "t8+(guR##m",
+            "roles": [
+                "Receptionist",
+                "Dentist",
+                "Patient"
+            ],
+            "blood_group": "B+",
+            "first_name": "Alexandra",
+            "last_name": "Swanson",
+            "gender": "Female",
+            "dob": "1942-10-02",
+            "phone_number": "001-250-317-9869x748",
+            "address": {
+                "country": "Yemen",
+                "state": "Montana",
+                "city": "Dunnview",
+                "street_address": "1240 Richard Ports"
+            }
+        },
+        {
+            "email": "xmiller@example.net",
+            "password": "()k+0QjtWP",
+            "roles": [
+                "Patient",
+                "Dentist",
+                "Receptionist"
+            ],
+            "blood_group": "A+",
+            "first_name": "Ralph",
+            "last_name": "Walton",
+            "gender": "Female",
+            "dob": "1988-01-27",
+            "address": {
+                "country": "Palestinian Territory",
+                "state": "Hawaii",
+                "city": "Juanland",
+                "street_address": "7980 Reynolds Trail"
+            }
+        },
+        {
+            "email": "john48@example.com",
+            "password": "C7G76OfB$Q",
+            "roles": [
+                "Receptionist",
+                "Patient"
+            ],
+            "blood_group": "AB+",
+            "first_name": "Heidi",
+            "last_name": "Hart",
+            "gender": "Male",
+            "dob": "1990-10-09",
+            "phone_number": "(402)599-6134x7063",
+            "address": {
+                "country": "Central African Republic",
+                "state": "Minnesota",
+                "city": "Ambertown",
+                "street_address": "716 David Key"
+            }
+        },
+        {
+            "email": "ynelson@example.net",
+            "password": "9VW$9TWiZm",
+            "roles": [
+                "Receptionist",
+                "Patient"
+            ],
+            "blood_group": "O-",
+            "first_name": "Jared",
+            "last_name": "Lynch",
+            "gender": "Female",
+            "dob": "1975-05-27",
+            "phone_number": "(975)902-7283",
+            "address": {
+                "country": "Wallis and Futuna",
+                "state": "Idaho",
+                "city": "South Mariahville",
+                "street_address": "951 Thompson Fort"
+            }
+        },
+        {
+            "email": "mark68@example.org",
+            "password": "AQ!9@Sm9FY",
+            "roles": [
+                "Receptionist",
+                "Patient"
+            ],
+            "blood_group": "AB+",
+            "first_name": "Amanda",
+            "last_name": "Russell",
+            "gender": "Male",
+            "dob": "1947-03-29",
+            "phone_number": "+1-818-799-4431x815",
+            "address": {
+                "country": "Egypt",
+                "state": "West Virginia",
+                "city": "Williamsburgh",
+                "street_address": "01713 Dustin Light"
+            }
+        },
+        {
+            "email": "fpaul@example.com",
+            "password": "1DGa@#C*_1",
+            "roles": [
+                "Dentist",
+                "Receptionist"
+            ],
+            "blood_group": "A-",
+            "first_name": "Stephanie",
+            "last_name": "Olson",
+            "gender": "Male",
+            "dob": "1964-12-22",
+            "phone_number": "9292891592",
+            "address": {
+                "country": "Lithuania",
+                "state": "Massachusetts",
+                "city": "Lake Jerome",
+                "street_address": "4015 Derek Overpass Suite 074"
+            }
+        },
+        {
+            "email": "palmeralan@example.com",
+            "password": "2AVNR5cR^3",
+            "roles": [
+                "Dentist",
+                "Patient"
+            ],
+            "blood_group": "A-",
+            "first_name": "Richard",
+            "last_name": "Harris",
+            "gender": "Other",
+            "dob": "2001-12-21",
+            "phone_number": "570-370-5244",
+            "address": {
+                "country": "Faroe Islands",
+                "state": "Washington",
+                "city": "Maryville",
+                "street_address": "31947 Patricia Courts"
+            }
+        },
+        {
+            "email": "nashjames@example.net",
+            "password": "0^JL5jcN#L",
+            "roles": [
+                "Patient"
+            ],
+            "blood_group": "AB-",
+            "first_name": "David",
+            "last_name": "Oliver",
+            "gender": "Other",
+            "dob": "1954-12-11",
+            "address": {
+                "country": "El Salvador",
+                "state": "West Virginia",
+                "city": "Lake Patriciafort",
+                "street_address": "3895 Barr Crossing"
+            }
+        },
+        {
+            "email": "qyang@example.net",
+            "password": ")2Mbln8Ae(",
+            "roles": [
+                "Receptionist",
+                "Patient"
+            ],
+            "blood_group": "B+",
+            "first_name": "Elizabeth",
+            "last_name": "Wall",
+            "gender": "Other",
+            "dob": "2006-03-15",
+            "phone_number": "446-606-0824x9349",
+            "address": {
+                "country": "Iran",
+                "state": "New Mexico",
+                "city": "New Madison",
+                "street_address": "613 Miranda Spring Suite 535"
+            }
+        },
+        {
+            "email": "corey94@example.net",
+            "password": "$4B2*@^c&M",
+            "roles": [
+                "Patient",
+                "Dentist"
+            ],
+            "blood_group": "A-",
+            "first_name": "Olivia",
+            "last_name": "Diaz",
+            "gender": "Male",
+            "dob": "2000-10-06",
+            "phone_number": "230.733.1348",
+            "address": {
+                "country": "Tonga",
+                "state": "South Dakota",
+                "city": "New Kenneth",
+                "street_address": "179 Megan Run Suite 115"
+            }
+        },
+        {
+            "email": "selenaescobar@example.com",
+            "password": "*Uw15QOdEg",
+            "roles": [
+                "Patient",
+                "Receptionist",
+                "Dentist"
+            ],
+            "blood_group": "O+",
+            "first_name": "Kyle",
+            "last_name": "Hart",
+            "gender": "Female",
+            "dob": "1942-07-19",
+            "phone_number": "001-589-891-3745x185",
+            "address": {
+                "country": "Marshall Islands",
+                "state": "New York",
+                "city": "Osbornville",
+                "street_address": "29632 Nelson Rapids Apt. 316"
+            }
+        },
+        {
+            "email": "heatherwagner@example.net",
+            "password": "lCoE51Ny6*",
+            "roles": [
+                "Dentist",
+                "Receptionist"
+            ],
+            "blood_group": "AB-",
+            "first_name": "James",
+            "last_name": "Blake",
+            "gender": "Male",
+            "dob": "1945-08-27",
+            "address": {
+                "country": "Norfolk Island",
+                "state": "Minnesota",
+                "city": "Newmanview",
+                "street_address": "2584 Lee Spurs Suite 407"
+            }
+        },
+        {
+            "email": "pamela36@example.net",
+            "password": "@*U7iFpir8",
+            "roles": [
+                "Dentist",
+                "Receptionist",
+                "Patient"
+            ],
+            "blood_group": "A-",
+            "first_name": "Jacqueline",
+            "last_name": "Weiss",
+            "gender": "Male",
+            "dob": "1952-02-27",
+            "address": {
+                "country": "Italy",
+                "state": "Maine",
+                "city": "Crystalside",
+                "street_address": "833 Sharon Lock"
+            }
+        },
+        {
+            "email": "jennifer33@example.com",
+            "password": "pNXh#zz6@9",
+            "roles": [
+                "Patient",
+                "Receptionist",
+                "Dentist"
+            ],
+            "blood_group": "O-",
+            "first_name": "James",
+            "last_name": "Lee",
+            "gender": "Female",
+            "dob": "1960-11-15",
+            "address": {
+                "country": "Bahamas",
+                "state": "Vermont",
+                "city": "East Randallfort",
+                "street_address": "760 Weber Meadows Apt. 065"
+            }
+        },
+        {
+            "email": "patriciayoung@example.net",
+            "password": "Q$7BIGt_(v",
+            "roles": [
+                "Patient"
+            ],
+            "blood_group": "A+",
+            "first_name": "Thomas",
+            "last_name": "Warren",
+            "gender": "Other",
+            "dob": "1994-05-15",
+            "address": {
+                "country": "Bouvet Island (Bouvetoya)",
+                "state": "South Dakota",
+                "city": "Christopherborough",
+                "street_address": "43896 Byrd Causeway"
+            }
+        },
+        {
+            "email": "kwhite@example.net",
+            "password": "I_9ORE$yL3",
+            "roles": [
+                "Receptionist",
+                "Patient"
+            ],
+            "blood_group": "A-",
+            "first_name": "John",
+            "last_name": "Williams",
+            "gender": "Male",
+            "dob": "1937-04-07",
+            "address": {
+                "country": "Luxembourg",
+                "state": "California",
+                "city": "West Jamesborough",
+                "street_address": "77250 Garcia Trafficway Apt. 915"
+            }
+        },
+        {
+            "email": "adam31@example.org",
+            "password": "*2Byco6c0X",
+            "roles": [
+                "Dentist",
+                "Patient",
+                "Receptionist"
+            ],
+            "blood_group": "A-",
+            "first_name": "Parker",
+            "last_name": "Torres",
+            "gender": "Female",
+            "dob": "1977-01-16",
+            "phone_number": "510-372-1130x654",
+            "address": {
+                "country": "Tokelau",
+                "state": "Vermont",
+                "city": "Walkershire",
+                "street_address": "730 Hoover Skyway Suite 489"
+            }
+        },
+        {
+            "email": "henry58@example.org",
+            "password": "*LJ8TCGtUS",
+            "roles": [
+                "Dentist",
+                "Receptionist"
+            ],
+            "blood_group": "A+",
+            "first_name": "Victoria",
+            "last_name": "Quinn",
+            "gender": "Female",
+            "dob": "1966-11-15",
+            "phone_number": "488-741-5483x912",
+            "address": {
+                "country": "Micronesia",
+                "state": "Maryland",
+                "city": "Ryanchester",
+                "street_address": "34131 Elizabeth Station Apt. 292"
+            }
+        },
+        {
+            "email": "colemancharles@example.net",
+            "password": "mw8$@1Unr2",
+            "roles": [
+                "Patient",
+                "Dentist"
+            ],
+            "blood_group": "B+",
+            "first_name": "Ann",
+            "last_name": "Pierce",
+            "gender": "Male",
+            "dob": "1947-02-08",
+            "address": {
+                "country": "Fiji",
+                "state": "Florida",
+                "city": "Jonesstad",
+                "street_address": "46597 Rangel Plains Apt. 372"
+            }
+        },
+        {
+            "email": "rebeccavazquez@example.org",
+            "password": "$bI_1PBsw(",
+            "roles": [
+                "Patient",
+                "Dentist"
+            ],
+            "blood_group": "AB+",
+            "first_name": "Crystal",
+            "last_name": "Hester",
+            "gender": "Male",
+            "dob": "1995-03-31",
+            "address": {
+                "country": "Greenland",
+                "state": "Kansas",
+                "city": "Rossfort",
+                "street_address": "301 John Parkway Suite 066"
+            }
+        },
+        {
+            "email": "marshalldaniel@example.net",
+            "password": "@0QI15mg_g",
+            "roles": [
+                "Patient"
+            ],
+            "blood_group": "O+",
+            "first_name": "Ian",
+            "last_name": "Lambert",
+            "gender": "Female",
+            "dob": "1961-01-27",
+            "phone_number": "+1-887-650-6738x58116",
+            "address": {
+                "country": "Cambodia",
+                "state": "Indiana",
+                "city": "Holtville",
+                "street_address": "8664 Rose Summit Suite 094"
+            }
+        },
+        {
+            "email": "gibsonthomas@example.org",
+            "password": ")fP&X@kiK1",
+            "roles": [
+                "Patient",
+                "Receptionist"
+            ],
+            "blood_group": "B+",
+            "first_name": "Lindsey",
+            "last_name": "Andrews",
+            "gender": "Other",
+            "dob": "1980-08-11",
+            "address": {
+                "country": "Namibia",
+                "state": "Montana",
+                "city": "Maryfurt",
+                "street_address": "5777 Cox Inlet"
+            }
+        },
+        {
+            "email": "brooke99@example.net",
+            "password": "0!6iZ!638b",
+            "roles": [
+                "Patient",
+                "Receptionist",
+                "Dentist"
+            ],
+            "blood_group": "A-",
+            "first_name": "Ethan",
+            "last_name": "Crane",
+            "gender": "Female",
+            "dob": "1955-03-18",
+            "phone_number": "623-805-2584x415",
+            "address": {
+                "country": "Cameroon",
+                "state": "Hawaii",
+                "city": "Lake Dustinton",
+                "street_address": "18088 Terrence Valleys Suite 123"
+            }
+        },
+        {
+            "email": "jesseboyer@example.net",
+            "password": "&wXs&THc*1",
+            "roles": [
+                "Patient",
+                "Receptionist",
+                "Dentist"
+            ],
+            "blood_group": "AB-",
+            "first_name": "Hannah",
+            "last_name": "Goodman",
+            "gender": "Female",
+            "dob": "1969-08-11",
+            "phone_number": "693-785-7717x07523",
+            "address": {
+                "country": "Kyrgyz Republic",
+                "state": "Pennsylvania",
+                "city": "New Nicolestad",
+                "street_address": "559 Hughes Corner"
+            }
+        },
+        {
+            "email": "zlambert@example.net",
+            "password": "iEHp4ib*#7",
+            "roles": [
+                "Patient"
+            ],
+            "blood_group": "AB+",
+            "first_name": "Monica",
+            "last_name": "Castillo",
+            "gender": "Other",
+            "dob": "1982-12-29",
+            "phone_number": "953.283.8891x5896",
+            "address": {
+                "country": "Guinea",
+                "state": "Louisiana",
+                "city": "Lewisside",
+                "street_address": "0096 Mcneil Plaza"
+            }
+        },
+        {
+            "email": "sparksscott@example.com",
+            "password": "j+F04VLCqz",
+            "roles": [
+                "Dentist",
+                "Patient",
+                "Receptionist"
+            ],
+            "blood_group": "O+",
+            "first_name": "Morgan",
+            "last_name": "Lee",
+            "gender": "Female",
+            "dob": "1991-08-05",
+            "address": {
+                "country": "Antarctica (the territory South of 60 deg S)",
+                "state": "Alaska",
+                "city": "Leslieshire",
+                "street_address": "423 Bean Mountain Apt. 051"
+            }
+        },
+        {
+            "email": "ucombs@example.com",
+            "password": "M58H4XBy+p",
+            "roles": [
+                "Patient",
+                "Receptionist"
+            ],
+            "blood_group": "A+",
+            "first_name": "Robert",
+            "last_name": "Mitchell",
+            "gender": "Other",
+            "dob": "1957-01-16",
+            "address": {
+                "country": "Rwanda",
+                "state": "West Virginia",
+                "city": "South Markstad",
+                "street_address": "35862 Miller Knolls Suite 585"
+            }
+        },
+        {
+            "email": "johnlewis@example.net",
+            "password": "V$2n+)CgT(",
+            "roles": [
+                "Patient",
+                "Receptionist",
+                "Dentist"
+            ],
+            "blood_group": "B+",
+            "first_name": "Jennifer",
+            "last_name": "Evans",
+            "gender": "Female",
+            "dob": "1995-07-14",
+            "address": {
+                "country": "Svalbard & Jan Mayen Islands",
+                "state": "Missouri",
+                "city": "New Thomaschester",
+                "street_address": "069 Nicholas Extensions"
+            }
+        },
+        {
+            "email": "michaeloconnor@example.org",
+            "password": "+3*8ZWq0YT",
+            "roles": [
+                "Receptionist"
+            ],
+            "blood_group": "AB+",
+            "first_name": "Timothy",
+            "last_name": "Wells",
+            "gender": "Female",
+            "dob": "1989-06-05",
+            "phone_number": "(305)722-2532x1920",
+            "address": {
+                "country": "New Caledonia",
+                "state": "Ohio",
+                "city": "Cliffordberg",
+                "street_address": "22135 Donald Pass"
+            }
+        },
+        {
+            "email": "rachelmoore@example.com",
+            "password": "@6S^XIUQ+h",
+            "roles": [
+                "Patient",
+                "Receptionist",
+                "Dentist"
+            ],
+            "blood_group": "A-",
+            "first_name": "Jessica",
+            "last_name": "Deleon",
+            "gender": "Other",
+            "dob": "1963-06-12",
+            "phone_number": "205-327-0432",
+            "address": {
+                "country": "Costa Rica",
+                "state": "Ohio",
+                "city": "Brandihaven",
+                "street_address": "0812 Richard Trafficway"
+            }
+        }
+    ]
+}

@@ -2,6 +2,7 @@ from rest_framework import serializers
 from api.models import Appointment, Role
 import re
 from datetime import date
+from django.db import transaction
 
 from django.utils.timezone import is_aware, make_aware, now
 from django.utils.crypto import get_random_string  # For generating unique baby IDs
@@ -10,6 +11,10 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -259,6 +264,110 @@ class RegisterSerializer(serializers.ModelSerializer):
         # Assign roles
         user.roles.set(Role.objects.filter(name__in=roles))
         return user
+
+
+class BulkRegisterSerializer(serializers.Serializer):
+    users = serializers.ListField(
+        child=serializers.DictField(),  # Accept dictionaries for each user
+        allow_empty=False,
+        help_text="A list of user registration data.",
+    )
+
+    def validate(self, data):
+        """
+        Validate bulk user data.
+        """
+        # Validate unique emails within the bulk request
+        emails = [
+            user_data["email"] for user_data in data["users"] if "email" in user_data
+        ]
+        duplicate_emails = {email for email in emails if emails.count(email) > 1}
+
+        if duplicate_emails:
+            raise serializers.ValidationError(
+                {
+                    "users": f"Duplicate emails found in the request: {', '.join(duplicate_emails)}"
+                }
+            )
+
+        # Validate roles explicitly
+        valid_roles = set(Role.objects.values_list("name", flat=True))
+        logger.debug(f"Valid roles from DB: {valid_roles}")
+
+        for idx, user_data in enumerate(data["users"]):
+            roles = user_data.get("roles", [])
+            logger.debug(f"Validating roles for user {idx}: {roles}")
+
+            invalid_roles = [role for role in roles if role not in valid_roles]
+            if invalid_roles:
+                logger.error(f"Invalid roles found for user {idx}: {invalid_roles}")
+                raise serializers.ValidationError(
+                    {"roles": f"Invalid roles provided: {', '.join(invalid_roles)}"}
+                )
+
+        return data
+
+    def create(self, validated_data):
+        """
+        Bulk user creation logic with inline guardian handling and transaction safety.
+        """
+        users_data = validated_data["users"]
+        created_users = []
+        response_details = []  # Collect details for success and failure
+
+        with transaction.atomic():
+            for idx, user_data in enumerate(users_data):
+                try:
+                    logger.debug(f"Processing user {idx}: {user_data}")
+
+                    # Convert roles to Role objects
+                    roles = user_data.pop("roles", [])
+                    logger.debug(f"Converting roles to Role objects: {roles}")
+                    role_objects = Role.objects.filter(name__in=roles)
+                    user_data["roles"] = role_objects
+
+                    # Create the user using RegisterSerializer
+                    serializer = RegisterSerializer(data=user_data)
+                    serializer.is_valid(raise_exception=True)
+                    user = serializer.save()
+                    created_users.append(user)
+
+                    # Add success detail
+                    response_details.append(
+                        {
+                            "email": user.email,
+                            "status": "success",
+                            "message": "User registered successfully.",
+                        }
+                    )
+
+                except serializers.ValidationError as e:
+                    # Handle validation errors
+                    logger.error(f"Validation error for user {idx}: {e.detail}")
+                    response_details.append(
+                        {
+                            "email": user_data.get("email", "Unknown"),
+                            "status": "failed",
+                            "errors": e.detail,  # Provide detailed validation errors
+                        }
+                    )
+
+                except Exception as e:
+                    # Handle unexpected errors
+                    logger.error(f"Unexpected error for user {idx}: {str(e)}")
+                    response_details.append(
+                        {
+                            "email": user_data.get("email", "Unknown"),
+                            "status": "failed",
+                            "errors": {"non_field_errors": [str(e)]},
+                        }
+                    )
+
+        return {
+            "success_count": len(created_users),
+            "failed_count": len(users_data) - len(created_users),
+            "details": response_details,
+        }
 
 
 class AppointmentSerializer(serializers.ModelSerializer):

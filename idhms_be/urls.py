@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import path
 from api.views import (
     RegisterView,
+    BulkRegisterView,
     SecureView,
     CustomTokenObtainPairView,
     CustomTokenRefreshView,
@@ -23,6 +24,7 @@ urlpatterns = [
     # path("api/login/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("api/login/refresh/", CustomTokenRefreshView.as_view(), name="token_refresh"),
     path("api/register/", RegisterView.as_view(), name="register"),
+    path("api/register/bulk/", BulkRegisterView.as_view(), name="bulk_register"),
     # Secure General View
     path("api/secure/", SecureView.as_view(), name="secure_view"),
     # Role-Specific Endpoints
