@@ -168,3 +168,106 @@ def test_token_refresh_invalid_token(api_client):
     # Ensure the response returns a 401 status with the correct error message
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert response.data["detail"] == "Invalid refresh token."
+
+
+@pytest.mark.django_db
+def test_bulk_register_users(api_client, create_user, setup_roles):
+    """
+    Test bulk registration with valid and invalid inputs.
+    """
+    # Create an admin user and authenticate
+    admin_user = create_user(
+        email="admin@example.com", password="admin_pass", roles=["Admin"]
+    )
+    response = api_client.post(
+        "/api/login/", {"email": "admin@example.com", "password": "admin_pass"}
+    )
+    assert response.status_code == 200
+
+    # Extract token from the response
+    admin_token = response.cookies.get("access_token")
+    assert admin_token is not None  # Ensure the token exists
+
+    # Set the token in the test client for authentication
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin_token.value}")
+
+    # Positive: Valid bulk registration
+    valid_payload = {
+        "users": [
+            {
+                "email": "user1@example.com",
+                "password": "Password123!",
+                "roles": ["Patient"],
+                "dob": "1990-01-01",
+                "contact_info": "+1234567890",
+                "first_name": "User1",
+                "last_name": "Example",
+                "gender": "Male",
+                "blood_group": "O+",
+            },
+            {
+                "email": "user2@example.com",
+                "password": "SecurePass456!",
+                "roles": ["Receptionist", "Dentist"],
+                "dob": "1985-05-15",
+                "contact_info": "+9876543210",
+                "first_name": "User2",
+                "last_name": "Example",
+                "gender": "Female",
+                "blood_group": "A-",
+            },
+        ]
+    }
+    response = api_client.post("/api/register/bulk/", valid_payload, format="json")
+    print(response.data)
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data["success_count"] == 2
+    assert response.data["failed_count"] == 0
+    assert len(response.data["details"]) == 2
+    assert response.data["details"][0]["status"] == "success"
+    assert response.data["details"][1]["status"] == "success"
+
+
+@pytest.mark.django_db
+def test_bulk_register_users_non_admin(api_client, create_user, setup_roles):
+    """
+    Ensure non-admin users cannot access bulk registration.
+    """
+    # Create a non-admin user and authenticate
+    patient_user = create_user(
+        email="patient@example.com", password="patient_pass", roles=["Patient"]
+    )
+    response = api_client.post(
+        "/api/login/", {"email": "patient@example.com", "password": "patient_pass"}
+    )
+    assert response.status_code == 200
+
+    # Extract token from the response
+    patient_token = response.cookies.get("access_token")
+    assert patient_token is not None  # Ensure the token exists
+
+    # Set the token in the test client for authentication
+    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {patient_token.value}")
+
+    # Attempt bulk registration
+    valid_payload = {
+        "users": [
+            {
+                "email": "user1@example.com",
+                "password": "Password123!",
+                "roles": ["Patient"],
+                "dob": "1990-01-01",
+                "contact_info": "+1234567890",
+                "first_name": "User1",
+                "last_name": "Example",
+                "gender": "Male",
+                "blood_group": "O+",
+            }
+        ]
+    }
+    response = api_client.post("/api/register/bulk/", valid_payload, format="json")
+    print(response.data)
+    assert response.status_code == 403
+    assert (
+        response.data["detail"] == "You do not have permission to perform this action."
+    )
