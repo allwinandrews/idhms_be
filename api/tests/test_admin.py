@@ -5,26 +5,26 @@ from rest_framework import status
 @pytest.mark.django_db
 def test_admin_access(api_client, create_user, admin_token):
     """
-    Test that an Admin user can access the Admin-specific endpoint.
+    Test that an admin user can access the admin-specific endpoint.
     """
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin_token.value}")
+    api_client.cookies["access_token"] = admin_token.value
     response = api_client.get("/api/admin/")
     assert response.status_code == status.HTTP_200_OK
-    assert response.data["message"] == "Welcome, Admin!"
+    assert response.data["message"] == "Welcome, admin!"
 
 
 @pytest.mark.django_db
 def test_non_admin_access(api_client, create_user, receptionist_token, patient_token):
     """
-    Test that non-Admin roles cannot access the Admin endpoint.
+    Test that non-admin roles cannot access the admin endpoint.
     """
-    # Receptionist tries to access the Admin endpoint
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token.value}")
+    # receptionist tries to access the admin endpoint
+    api_client.cookies["access_token"] = receptionist_token.value
     response = api_client.get("/api/admin/")
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    # Patient tries to access the Admin endpoint
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {patient_token.value}")
+    # patient tries to access the admin endpoint
+    api_client.cookies["access_token"] = patient_token.value
     response = api_client.get("/api/admin/")
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
@@ -32,7 +32,7 @@ def test_non_admin_access(api_client, create_user, receptionist_token, patient_t
 @pytest.mark.django_db
 def test_no_token_access(api_client):
     """
-    Test accessing the Admin endpoint without a token.
+    Test accessing the admin endpoint without a token.
     """
     response = api_client.get("/api/admin/")
     assert response.status_code == status.HTTP_401_UNAUTHORIZED

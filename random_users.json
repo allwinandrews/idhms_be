@@ -4,9 +4,9 @@
             "email": "randallgreen@example.net",
             "password": "t8+(guR##m",
             "roles": [
-                "Receptionist",
-                "Dentist",
-                "Patient"
+                "receptionist",
+                "dentist",
+                "patient"
             ],
             "blood_group": "B+",
             "first_name": "Alexandra",
@@ -25,9 +25,9 @@
             "email": "xmiller@example.net",
             "password": "()k+0QjtWP",
             "roles": [
-                "Patient",
-                "Dentist",
-                "Receptionist"
+                "patient",
+                "dentist",
+                "receptionist"
             ],
             "blood_group": "A+",
             "first_name": "Ralph",
@@ -45,8 +45,8 @@
             "email": "john48@example.com",
             "password": "C7G76OfB$Q",
             "roles": [
-                "Receptionist",
-                "Patient"
+                "receptionist",
+                "patient"
             ],
             "blood_group": "AB+",
             "first_name": "Heidi",
@@ -65,8 +65,8 @@
             "email": "ynelson@example.net",
             "password": "9VW$9TWiZm",
             "roles": [
-                "Receptionist",
-                "Patient"
+                "receptionist",
+                "patient"
             ],
             "blood_group": "O-",
             "first_name": "Jared",
@@ -85,8 +85,8 @@
             "email": "mark68@example.org",
             "password": "AQ!9@Sm9FY",
             "roles": [
-                "Receptionist",
-                "Patient"
+                "receptionist",
+                "patient"
             ],
             "blood_group": "AB+",
             "first_name": "Amanda",
@@ -105,8 +105,8 @@
             "email": "fpaul@example.com",
             "password": "1DGa@#C*_1",
             "roles": [
-                "Dentist",
-                "Receptionist"
+                "dentist",
+                "receptionist"
             ],
             "blood_group": "A-",
             "first_name": "Stephanie",
@@ -125,8 +125,8 @@
             "email": "palmeralan@example.com",
             "password": "2AVNR5cR^3",
             "roles": [
-                "Dentist",
-                "Patient"
+                "dentist",
+                "patient"
             ],
             "blood_group": "A-",
             "first_name": "Richard",
@@ -145,7 +145,7 @@
             "email": "nashjames@example.net",
             "password": "0^JL5jcN#L",
             "roles": [
-                "Patient"
+                "patient"
             ],
             "blood_group": "AB-",
             "first_name": "David",
@@ -163,8 +163,8 @@
             "email": "qyang@example.net",
             "password": ")2Mbln8Ae(",
             "roles": [
-                "Receptionist",
-                "Patient"
+                "receptionist",
+                "patient"
             ],
             "blood_group": "B+",
             "first_name": "Elizabeth",
@@ -183,8 +183,8 @@
             "email": "corey94@example.net",
             "password": "$4B2*@^c&M",
             "roles": [
-                "Patient",
-                "Dentist"
+                "patient",
+                "dentist"
             ],
             "blood_group": "A-",
             "first_name": "Olivia",
@@ -203,9 +203,9 @@
             "email": "selenaescobar@example.com",
             "password": "*Uw15QOdEg",
             "roles": [
-                "Patient",
-                "Receptionist",
-                "Dentist"
+                "patient",
+                "receptionist",
+                "dentist"
             ],
             "blood_group": "O+",
             "first_name": "Kyle",
@@ -224,8 +224,8 @@
             "email": "heatherwagner@example.net",
             "password": "lCoE51Ny6*",
             "roles": [
-                "Dentist",
-                "Receptionist"
+                "dentist",
+                "receptionist"
             ],
             "blood_group": "AB-",
             "first_name": "James",
@@ -243,9 +243,9 @@
             "email": "pamela36@example.net",
             "password": "@*U7iFpir8",
             "roles": [
-                "Dentist",
-                "Receptionist",
-                "Patient"
+                "dentist",
+                "receptionist",
+                "patient"
             ],
             "blood_group": "A-",
             "first_name": "Jacqueline",
@@ -263,9 +263,9 @@
             "email": "jennifer33@example.com",
             "password": "pNXh#zz6@9",
             "roles": [
-                "Patient",
-                "Receptionist",
-                "Dentist"
+                "patient",
+                "receptionist",
+                "dentist"
             ],
             "blood_group": "O-",
             "first_name": "James",
@@ -283,7 +283,7 @@
             "email": "patriciayoung@example.net",
             "password": "Q$7BIGt_(v",
             "roles": [
-                "Patient"
+                "patient"
             ],
             "blood_group": "A+",
             "first_name": "Thomas",
@@ -301,8 +301,8 @@
             "email": "kwhite@example.net",
             "password": "I_9ORE$yL3",
             "roles": [
-                "Receptionist",
-                "Patient"
+                "receptionist",
+                "patient"
             ],
             "blood_group": "A-",
             "first_name": "John",
@@ -320,9 +320,9 @@
             "email": "adam31@example.org",
             "password": "*2Byco6c0X",
             "roles": [
-                "Dentist",
-                "Patient",
-                "Receptionist"
+                "dentist",
+                "patient",
+                "receptionist"
             ],
             "blood_group": "A-",
             "first_name": "Parker",
@@ -341,8 +341,8 @@
             "email": "henry58@example.org",
             "password": "*LJ8TCGtUS",
             "roles": [
-                "Dentist",
-                "Receptionist"
+                "dentist",
+                "receptionist"
             ],
             "blood_group": "A+",
             "first_name": "Victoria",
@@ -361,8 +361,8 @@
             "email": "colemancharles@example.net",
             "password": "mw8$@1Unr2",
             "roles": [
-                "Patient",
-                "Dentist"
+                "patient",
+                "dentist"
             ],
             "blood_group": "B+",
             "first_name": "Ann",
@@ -380,8 +380,8 @@
             "email": "rebeccavazquez@example.org",
             "password": "$bI_1PBsw(",
             "roles": [
-                "Patient",
-                "Dentist"
+                "patient",
+                "dentist"
             ],
             "blood_group": "AB+",
             "first_name": "Crystal",
@@ -399,7 +399,7 @@
             "email": "marshalldaniel@example.net",
             "password": "@0QI15mg_g",
             "roles": [
-                "Patient"
+                "patient"
             ],
             "blood_group": "O+",
             "first_name": "Ian",
@@ -418,8 +418,8 @@
             "email": "gibsonthomas@example.org",
             "password": ")fP&X@kiK1",
             "roles": [
-                "Patient",
-                "Receptionist"
+                "patient",
+                "receptionist"
             ],
             "blood_group": "B+",
             "first_name": "Lindsey",
@@ -437,9 +437,9 @@
             "email": "brooke99@example.net",
             "password": "0!6iZ!638b",
             "roles": [
-                "Patient",
-                "Receptionist",
-                "Dentist"
+                "patient",
+                "receptionist",
+                "dentist"
             ],
             "blood_group": "A-",
             "first_name": "Ethan",
@@ -458,9 +458,9 @@
             "email": "jesseboyer@example.net",
             "password": "&wXs&THc*1",
             "roles": [
-                "Patient",
-                "Receptionist",
-                "Dentist"
+                "patient",
+                "receptionist",
+                "dentist"
             ],
             "blood_group": "AB-",
             "first_name": "Hannah",
@@ -479,7 +479,7 @@
             "email": "zlambert@example.net",
             "password": "iEHp4ib*#7",
             "roles": [
-                "Patient"
+                "patient"
             ],
             "blood_group": "AB+",
             "first_name": "Monica",
@@ -498,9 +498,9 @@
             "email": "sparksscott@example.com",
             "password": "j+F04VLCqz",
             "roles": [
-                "Dentist",
-                "Patient",
-                "Receptionist"
+                "dentist",
+                "patient",
+                "receptionist"
             ],
             "blood_group": "O+",
             "first_name": "Morgan",
@@ -518,8 +518,8 @@
             "email": "ucombs@example.com",
             "password": "M58H4XBy+p",
             "roles": [
-                "Patient",
-                "Receptionist"
+                "patient",
+                "receptionist"
             ],
             "blood_group": "A+",
             "first_name": "Robert",
@@ -537,9 +537,9 @@
             "email": "johnlewis@example.net",
             "password": "V$2n+)CgT(",
             "roles": [
-                "Patient",
-                "Receptionist",
-                "Dentist"
+                "patient",
+                "receptionist",
+                "dentist"
             ],
             "blood_group": "B+",
             "first_name": "Jennifer",
@@ -557,7 +557,7 @@
             "email": "michaeloconnor@example.org",
             "password": "+3*8ZWq0YT",
             "roles": [
-                "Receptionist"
+                "receptionist"
             ],
             "blood_group": "AB+",
             "first_name": "Timothy",
@@ -576,9 +576,9 @@
             "email": "rachelmoore@example.com",
             "password": "@6S^XIUQ+h",
             "roles": [
-                "Patient",
-                "Receptionist",
-                "Dentist"
+                "patient",
+                "receptionist",
+                "dentist"
             ],
             "blood_group": "A-",
             "first_name": "Jessica",

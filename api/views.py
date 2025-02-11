@@ -21,6 +21,8 @@ from api.serializers import (
     BulkRegisterSerializer,
 )
 from api.permissions import IsAdmin, IsPatient, IsDentist, IsReceptionist
+from django.utils.timezone import now, timedelta
+from django.db.models import Count
 
 # from api.models import User
 from api.models import Appointment, Role
@@ -32,17 +34,102 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
-# --- Admin Only View ---
+# --- admin Only View ---
 class AdminOnlyView(APIView):
     """
-    View accessible only to Admin users.
+    View accessible only to admin users.
     """
 
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def get(self, request):
         print(f"User: {request.user}, Roles: {request.user.roles.all()}")
-        return Response({"message": "Welcome, Admin!"})
+        return Response({"message": "Welcome, admin!"})
+
+class AdminAnalyticsView(APIView):
+    """
+    Provides aggregated analytics for the Admin Dashboard.
+    Requires admin access.
+    """
+    permission_classes = [IsAuthenticated, IsAdmin]
+    
+    def get(self, request):
+        try:
+            # --- User Statistics ---
+            total_users = User.objects.count()
+            active_users = User.objects.filter(last_login__gte=now() - timedelta(days=7)).count()
+
+            # Count users by role
+            users_by_role = (
+                User.objects.values("roles__name")
+                .annotate(count=Count("id"))
+                .order_by()
+            )
+            role_counts = {entry["roles__name"]: entry["count"] for entry in users_by_role}
+
+            # --- Appointment Statistics ---
+            total_appointments = Appointment.objects.count()
+
+            appointment_statuses = (
+                Appointment.objects.values("status")
+                .annotate(count=Count("id"))
+                .order_by()
+            )
+            appointment_counts = {entry["status"]: entry["count"] for entry in appointment_statuses}
+
+            # --- User Growth in Last 7 Days ---
+            recent_users = (
+                User.objects.filter(date_joined__gte=now() - timedelta(days=7))
+                .extra({"day": "date(date_joined)"})
+                .values("day")
+                .annotate(count=Count("id"))
+                .order_by("day")
+            )
+            user_growth = [{"date": entry["day"], "new_users": entry["count"]} for entry in recent_users]
+
+            # --- Most Active Users ---
+            most_active_users = (
+                User.objects.filter(last_login__gte=now() - timedelta(days=30))
+                .order_by("-last_login")
+                .values("first_name", "last_name", "last_login")[:5]
+            )
+
+            active_users_list = [
+                {
+                    "name": f"{user['first_name']} {user['last_name']}".strip() or "Unknown User",
+                    "last_login": user["last_login"],
+                }
+                for user in most_active_users
+            ]
+
+            # --- Top Dentists by Appointments ---
+            top_dentists = (
+                User.objects.filter(roles__name="dentist")  # Case-insensitive role match
+                .annotate(appointment_count=Count("dentist_appointments"))
+                .order_by("-appointment_count")[:5]
+            )
+            top_dentists_list = [
+                {"name": f"{dentist.first_name} {dentist.last_name}".strip(), "appointments": dentist.appointment_count}
+                for dentist in top_dentists
+            ]
+
+            # --- Response Data ---
+            analytics_data = {
+                "total_users": total_users,
+                "active_users": active_users,
+                "users_by_role": role_counts,
+                "total_appointments": total_appointments,
+                "appointment_statuses": appointment_counts,
+                "user_growth_last_7_days": user_growth,
+                "most_active_users": active_users_list,
+                "top_dentists_by_appointments": top_dentists_list,
+            }
+
+            return Response(analytics_data, status=200)
+
+        except Exception as e:
+            logger.error(f"Error fetching admin analytics: {str(e)}")
+            return Response({"error": "Failed to fetch analytics data."}, status=500)
 
 
 # --- Custom JWT Token Views ---
@@ -110,14 +197,14 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             value=access_token,
             httponly=True,
             secure=True,  # Set to True in production
-            samesite="Lax",  # Adjust based on your needs
+            samesite="None",  # Adjust based on your needs
         )
         response.set_cookie(
             key="refresh_token",
             value=refresh_token,
             httponly=True,
             secure=True,  # Set to True in production
-            samesite="Lax",
+            samesite="None",
         )
 
         return response
@@ -189,59 +276,31 @@ class CustomTokenRefreshView(TokenRefreshView):
         return response
 
 
-# --- Login View ---
-class LoginView(APIView):
-    # API endpoint for user login.
-    # Authenticates a user and returns JWT tokens along with their roles.
+class LogoutView(APIView):
+    """
+    Logout user by clearing HttpOnly JWT cookies and blacklisting the refresh token.
+    """
+    permission_classes = [IsAuthenticated]
 
-    permission_classes = [AllowAny]
+    def post(self, request):
+        logger.info(f"Logout request received from user: {request.user.email}")
 
-    def post(self, request, *args, **kwargs):
-        email = request.data.get("email")
-        password = request.data.get("password")
+        # Extract refresh token from cookies
+        refresh_token = request.COOKIES.get("refresh_token")
+        if refresh_token:
+            try:
+                token = RefreshToken(refresh_token)
+                token.blacklist()  # Blacklist the refresh token
+                logger.info(f"Blacklisted refresh token for user: {request.user.email}")
+            except Exception as e:
+                logger.error(f"Error blacklisting token: {str(e)}")
 
-        try:
-            # Authenticate user using email
-            user = authenticate(request, username=email, password=password)
+        # Clear JWT tokens from cookies
+        response = Response({"message": "Logout successful!"}, status=status.HTTP_200_OK)
+        response.delete_cookie("access_token")
+        response.delete_cookie("refresh_token")
 
-            if user is not None:
-                if not user.is_active:
-                    logger.warning(f"Inactive user login attempt: {email}")
-                    return Response(
-                        {"error": "User is inactive."},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
-
-                # Retrieve all roles for the user
-                roles = list(user.roles.values_list("name", flat=True))
-
-                # Generate JWT tokens
-                refresh = RefreshToken.for_user(user)
-                update_last_login(None, user)  # Update last login timestamp
-
-                logger.info(f"User {email} logged in successfully.")
-                return Response(
-                    {
-                        "access": str(refresh.access_token),
-                        "refresh": str(refresh),
-                        "roles": roles,  # Include user roles in the response
-                    },
-                    status=status.HTTP_200_OK,
-                )
-
-            logger.warning(f"Failed login attempt for email: {email}")
-            return Response(
-                {"error": "Invalid email or password."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
-
-        except Exception as e:
-            logger.error(f"Unexpected error during login: {str(e)}")
-            return Response(
-                {"error": "An unexpected error occurred."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
+        return response
 
 # --- Register View ---
 class RegisterView(APIView):
@@ -332,7 +391,7 @@ class BulkRegisterView(APIView):
         return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
 
 
-# --- Patient Data View ---
+# --- patient Data View ---
 class PatientDataView(APIView):
     """
     View to allow patients and optionally other roles to access patient-specific data.
@@ -344,8 +403,8 @@ class PatientDataView(APIView):
         user = request.user
         roles = list(user.roles.values_list("name", flat=True))
 
-        # Check if user is a Patient or has specific access
-        if "Patient" in roles or "Admin" in roles or "Dentist" in roles:
+        # Check if user is a patient or has specific access
+        if "patient" in roles or "admin" in roles or "dentist" in roles:
             # Safely access patient-specific fields
             patient_data = {
                 "first_name": user.first_name,
@@ -398,7 +457,7 @@ class ReceptionistManagePatientsView(APIView):
         """
         Retrieve a list of all patients.
         """
-        patients = User.objects.filter(roles__name="Patient").values(
+        patients = User.objects.filter(roles__name="patient").values(
             "id", "email", "first_name", "last_name", "contact_info", "gender"
         )
         return Response(list(patients), status=200)
@@ -409,10 +468,10 @@ class ReceptionistManagePatientsView(APIView):
         """
         serializer = RegisterSerializer(data=request.data)
         if serializer.is_valid():
-            user = serializer.save(roles=["Patient"])  # Assign 'Patient' role
+            user = serializer.save(roles=["patient"])  # Assign 'patient' role
             return Response(
                 {
-                    "message": f"Patient {user.first_name} {user.last_name} created successfully!"
+                    "message": f"patient {user.first_name} {user.last_name} created successfully!"
                 },
                 status=201,
             )
@@ -421,12 +480,13 @@ class ReceptionistManagePatientsView(APIView):
 
 
 # Appointment List and Create View
-class AppointmentListCreateView(ListCreateAPIView):
+class AppointmentListView(ListCreateAPIView):
     """
-    View to list and create appointments.
-    - Receptionists have full CRUD access.
-    - Dentists can list appointments assigned to them.
-    - Patients can list their own appointments.
+    Single view for listing and creating appointments based on the user's active role.
+    - Admins can view all appointments but cannot create new ones.
+    - Dentists can view only their assigned appointments.
+    - Receptionists can view all appointments and create new ones.
+    - Patients can view only their own appointments.
     """
 
     serializer_class = AppointmentSerializer
@@ -434,30 +494,48 @@ class AppointmentListCreateView(ListCreateAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        roles = list(
-            user.roles.values_list("name", flat=True)
-        )  # Retrieve all user roles
-        print(f"User Roles: {roles}, User ID: {user.id}")
+        roles = list(user.roles.values_list("name", flat=True))  # Retrieve all user roles
+        active_role = self.request.query_params.get("role")  # Get active role from frontend
 
-        if "Receptionist" in roles:
+        print(f"User Roles: {roles}, Active Role: {active_role}, User ID: {user.id}")
+
+        if not active_role or active_role not in roles:
+            return Appointment.objects.none()  # If no role is provided, return empty queryset
+
+        # Return data based on the active role
+        if active_role == "admin":
             return Appointment.objects.all()
-        elif "Dentist" in roles:
+        elif active_role == "receptionist":
+            return Appointment.objects.all()
+        elif active_role == "dentist":
             return Appointment.objects.filter(dentist=user)
-        elif "Patient" in roles:
+        elif active_role == "patient":
             return Appointment.objects.filter(patient=user)
+
         return Appointment.objects.none()
 
     def create(self, request, *args, **kwargs):
         """
-        Create a new appointment. Restricted to Receptionists.
+        Create a new appointment.
+        - Receptionists can create appointments.
+        - Admins, Dentists, and Patients cannot create appointments.
         """
-        if not request.user.roles.filter(name="Receptionist").exists():
+        roles = list(request.user.roles.values_list("name", flat=True))
+        active_role = request.query_params.get("role")
+
+        if not active_role or active_role not in roles:
+            return Response(
+                {"detail": "Invalid role selected."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if active_role != "receptionist":
             return Response(
                 {"detail": "Only receptionists can create appointments."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        return super().create(request, *args, **kwargs)
 
+        return super().create(request, *args, **kwargs)
 
 # Appointment Detail View
 class AppointmentDetailView(RetrieveUpdateDestroyAPIView):
@@ -479,10 +557,10 @@ class AppointmentDetailView(RetrieveUpdateDestroyAPIView):
         # Retrieve user roles
         roles = list(user.roles.values_list("name", flat=True))
 
-        if "Receptionist" in roles:
-            # Receptionist can fully update the appointment
+        if "receptionist" in roles:
+            # receptionist can fully update the appointment
             return super().update(request, *args, **kwargs)
-        elif "Dentist" in roles or "Patient" in roles:
+        elif "dentist" in roles or "patient" in roles:
             # Dentists and Patients can only request updates
             update_request = request.data.get("status", "Update Requested")
             appointment = self.get_object()
@@ -490,7 +568,7 @@ class AppointmentDetailView(RetrieveUpdateDestroyAPIView):
             appointment.save()
             return Response(
                 {
-                    "detail": f"Update requested by {'Dentist' if 'Dentist' in roles else 'Patient'}. Receptionist will review."
+                    "detail": f"Update requested by {'dentist' if 'dentist' in roles else 'patient'}. receptionist will review."
                 },
                 status=status.HTTP_202_ACCEPTED,
             )
@@ -501,7 +579,7 @@ class AppointmentDetailView(RetrieveUpdateDestroyAPIView):
 
     def destroy(self, request, *args, **kwargs):
         # Only Receptionists can delete appointments
-        if not request.user.roles.filter(name="Receptionist").exists():
+        if not request.user.roles.filter(name="receptionist").exists():
             return Response(
                 {"detail": "Only receptionists can delete appointments."},
                 status=status.HTTP_403_FORBIDDEN,

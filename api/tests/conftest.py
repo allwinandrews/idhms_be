@@ -14,7 +14,7 @@ def setup_roles():
     """
     Automatically populate the test database with required roles.
     """
-    roles = ["Admin", "Dentist", "Receptionist", "Patient"]
+    roles = ["admin", "dentist", "receptionist", "patient"]
     for role in roles:
         Role.objects.get_or_create(name=role)
 
@@ -50,7 +50,7 @@ def admin_token(api_client, create_user):
     """
     Fixture to generate an admin user's JWT token.
     """
-    create_user(email="admin_user@example.com", password="admin_pass", roles=["Admin"])
+    create_user(email="admin_user@example.com", password="admin_pass", roles=["admin"])
     response = api_client.post(
         "/api/login/", {"email": "admin_user@example.com", "password": "admin_pass"}
     )
@@ -63,7 +63,7 @@ def patient_token(api_client, create_user):
     Fixture to generate a patient's JWT token.
     """
     create_user(
-        email="patient_user@example.com", password="patient_pass", roles=["Patient"]
+        email="patient_user@example.com", password="patient_pass", roles=["patient"]
     )
     response = api_client.post(
         "/api/login/", {"email": "patient_user@example.com", "password": "patient_pass"}
@@ -77,7 +77,7 @@ def dentist_token(api_client, create_user):
     Fixture to generate a dentist's JWT token.
     """
     create_user(
-        email="dentist_user@example.com", password="dentist_pass", roles=["Dentist"]
+        email="dentist_user@example.com", password="dentist_pass", roles=["dentist"]
     )
     response = api_client.post(
         "/api/login/", {"email": "dentist_user@example.com", "password": "dentist_pass"}
@@ -93,7 +93,7 @@ def receptionist_token(api_client, create_user):
     create_user(
         email="receptionist_user@example.com",
         password="receptionist_pass",
-        roles=["Receptionist"],
+        roles=["receptionist"],
     )
     response = api_client.post(
         "/api/login/",
@@ -107,15 +107,15 @@ def create_patients():
     """
     Fixture to create multiple patients for testing.
     """
-    # Fetch the Patient role instance from the database
-    patient_role = Role.objects.get(name="Patient")
+    # Fetch the patient role instance from the database
+    patient_role = Role.objects.get(name="patient")
 
     # Create a list of patient users
     patients = [
         User.objects.create_user(
             email=f"patient{i}@example.com",
             password="password123",
-            first_name=f"Patient{i}",
+            first_name=f"patient{i}",
             last_name="Test",
             contact_info=f"+123456789{i}",
             dob="1990-01-01",
@@ -124,7 +124,7 @@ def create_patients():
         for i in range(1, 6)
     ]
 
-    # Assign the Patient role to each created user
+    # Assign the patient role to each created user
     for patient in patients:
         patient.roles.add(patient_role)
 
@@ -137,12 +137,12 @@ def create_appointments(create_user):
     Fixture to create multiple test appointments.
     """
     patient = create_user(
-        email="patient@example.com", password="password123", roles=["Patient"]
+        email="patient@example.com", password="password123", roles=["patient"]
     )
     dentist = create_user(
         email="dentist@example.com",
         password="password123",
-        roles=["Dentist"],
+        roles=["dentist"],
     )
     return [
         Appointment.objects.create(

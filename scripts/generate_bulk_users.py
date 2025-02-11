@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 fake = Faker()
 
 # Define possible roles and blood groups
-roles = ["Patient", "Receptionist", "Dentist"]
+roles = ["patient", "receptionist", "dentist"]
 role_weights = [0.7, 0.2, 0.1]  # Weighted probabilities
 blood_groups = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"]
 
@@ -41,7 +41,7 @@ for _ in range(30):
     }
 
     # Assign guardian for dependents under 18
-    if "Patient" in user["roles"] and datetime.strptime(
+    if "patient" in user["roles"] and datetime.strptime(
         user["dob"], "%Y-%m-%d"
     ) > datetime.now() - timedelta(
         days=6570

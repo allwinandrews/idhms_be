@@ -10,13 +10,13 @@ def test_admin_only_view(api_client, create_user):
     """
     # Create an admin user and a regular patient user
     admin_user = create_user(
-        email="admin_user@example.com", password="admin_pass", roles=["Admin"]
+        email="admin_user@example.com", password="admin_pass", roles=["admin"]
     )
     patient_user = create_user(
-        email="patient_user@example.com", password="patient_pass", roles=["Patient"]
+        email="patient_user@example.com", password="patient_pass", roles=["patient"]
     )
 
-    # Admin login
+    # admin login
     response = api_client.post(
         "/api/login/", {"email": "admin_user@example.com", "password": "admin_pass"}
     )
@@ -24,7 +24,7 @@ def test_admin_only_view(api_client, create_user):
     admin_token = response.cookies.get("access_token")
     assert admin_token is not None  # Ensure the token exists
 
-    # Patient login (for comparison)
+    # patient login (for comparison)
     response = api_client.post(
         "/api/login/", {"email": "patient_user@example.com", "password": "patient_pass"}
     )
@@ -32,15 +32,15 @@ def test_admin_only_view(api_client, create_user):
     patient_token = response.cookies.get("access_token")
     assert patient_token is not None  # Ensure the token exists
 
-    # Admin access to the endpoint
+    # admin access to the endpoint
     # print('admin_token.value',admin_token.value)
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin_token.value}")
+    api_client.cookies["access_token"] = admin_token.value
     response = api_client.get("/api/admin/")
     assert response.status_code == 200
-    assert response.data["message"] == "Welcome, Admin!"
+    assert response.data["message"] == "Welcome, admin!"
 
-    # Patient access to the endpoint (should be forbidden)
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {patient_token.value}")
+    # patient access to the endpoint (should be forbidden)
+    api_client.cookies["access_token"] = patient_token.value
     response = api_client.get("/api/admin/")
     assert response.status_code == 403
     assert (
@@ -51,14 +51,14 @@ def test_admin_only_view(api_client, create_user):
 @pytest.mark.django_db
 def test_patient_data_view(api_client, create_user):
     """
-    Test access to patient data for Patient role.
+    Test access to patient data for patient role.
     """
     # Create patient user
     create_user(
-        email="patient_user@example.com", password="patient_pass", roles=["Patient"]
+        email="patient_user@example.com", password="patient_pass", roles=["patient"]
     )
 
-    # Patient login
+    # patient login
     response = api_client.post(
         "/api/login/", {"email": "patient_user@example.com", "password": "patient_pass"}
     )
@@ -66,7 +66,7 @@ def test_patient_data_view(api_client, create_user):
     patient_token = response.cookies.get("access_token")
 
     # Access patient data endpoint
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {patient_token.value}")
+    api_client.cookies["access_token"] = patient_token.value
     response = api_client.get("/api/patient/data/")
     assert response.status_code == 200
 
@@ -78,10 +78,10 @@ def test_patient_access(api_client, create_user):
     """
     # Create patient user
     create_user(
-        email="patient_user@example.com", password="patient_pass", roles=["Patient"]
+        email="patient_user@example.com", password="patient_pass", roles=["patient"]
     )
 
-    # Patient login
+    # patient login
     response = api_client.post(
         "/api/login/", {"email": "patient_user@example.com", "password": "patient_pass"}
     )
@@ -89,20 +89,20 @@ def test_patient_access(api_client, create_user):
     patient_token = response.cookies.get("access_token")
 
     # Access patient data endpoint
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {patient_token.value}")
+    api_client.cookies["access_token"] = patient_token.value
     response = api_client.get("/api/patient/data/")
     assert response.status_code == 200
 
 
 @pytest.mark.django_db
 def test_dentist_appointments_access(api_client, create_user):
-    # Test access to dentist appointments endpoint for Dentist role.
+    # Test access to dentist appointments endpoint for dentist role.
     # Create dentist user
     create_user(
-        email="dentist_user@example.com", password="dentist_pass", roles=["Dentist"]
+        email="dentist_user@example.com", password="dentist_pass", roles=["dentist"]
     )
 
-    # Dentist login
+    # dentist login
     response = api_client.post(
         "/api/login/", {"email": "dentist_user@example.com", "password": "dentist_pass"}
     )
@@ -110,7 +110,7 @@ def test_dentist_appointments_access(api_client, create_user):
     dentist_token = response.cookies.get("access_token")
 
     # Access dentist appointments endpoint
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {dentist_token.value}")
+    api_client.cookies["access_token"] = dentist_token.value
     response = api_client.get("/api/appointments/")
     print(response.data)  # Debug output
     assert response.status_code == 200
@@ -121,8 +121,8 @@ def test_receptionist_manage_patients(api_client, receptionist_token):
     """
     Test that Receptionists can manage patient records.
     """
-    # Receptionist access
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {receptionist_token.value}")
+    # receptionist access
+    api_client.cookies["access_token"] = receptionist_token.value
 
     # Create a patient with unique email
     unique_email = f"john.doe+{uuid.uuid4().hex}@example.com"
@@ -139,7 +139,7 @@ def test_receptionist_manage_patients(api_client, receptionist_token):
         },
     )
     assert response.status_code == status.HTTP_201_CREATED
-    assert response.data["message"] == f"Patient John Doe created successfully!"
+    assert response.data["message"] == f"patient John Doe created successfully!"
 
     # Duplicate email test
     response = api_client.post(

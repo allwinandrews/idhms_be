@@ -3,45 +3,45 @@ from rest_framework.permissions import BasePermission
 
 class IsAdmin(BasePermission):
     """
-    Allows access only to Admin users.
+    Allows access only to admin users.
     """
 
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
-            and request.user.roles.filter(name="Admin").exists()
+            and request.user.roles.filter(name="admin").exists()
         )
 
 
 class IsPatient(BasePermission):
     """
-    Allows access only to Patient users.
+    Allows access only to patient users.
     """
 
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
-            and request.user.roles.filter(name="Patient").exists()
+            and request.user.roles.filter(name="patient").exists()
         )
 
 
 class IsDentist(BasePermission):
     """
-    Allows access only to Dentist users.
+    Allows access only to dentist users.
     """
 
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
-            and request.user.roles.filter(name="Dentist").exists()
+            and request.user.roles.filter(name="dentist").exists()
         )
 
 
 class IsReceptionist(BasePermission):
-    # Custom permission to allow access only to users with the Receptionist role.
+    # Custom permission to allow access only to users with the receptionist role.
 
     def has_permission(self, request, view):
         return (
             request.user.is_authenticated
-            and request.user.roles.filter(name="Receptionist").exists()
+            and request.user.roles.filter(name="receptionist").exists()
         )

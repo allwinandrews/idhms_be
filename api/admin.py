@@ -29,7 +29,7 @@ class BillingInline(admin.TabularInline):
 @admin.register(Role)
 class RoleAdmin(admin.ModelAdmin):
     """
-    Admin configuration for the Role model.
+    admin configuration for the Role model.
     """
 
     list_display = ("id", "name")
@@ -119,7 +119,7 @@ class CustomUserAdmin(UserAdmin):
 @admin.register(Appointment)
 class AppointmentAdmin(admin.ModelAdmin):
     """
-    Admin configuration for the Appointment model.
+    admin configuration for the Appointment model.
     """
 
     list_display = ("patient", "dentist", "appointment_date", "status")
@@ -136,7 +136,7 @@ class AppointmentAdmin(admin.ModelAdmin):
 @admin.register(Billing)
 class BillingAdmin(admin.ModelAdmin):
     """
-    Admin configuration for the Billing model.
+    admin configuration for the Billing model.
     """
 
     list_display = ("patient", "amount", "billing_date")
