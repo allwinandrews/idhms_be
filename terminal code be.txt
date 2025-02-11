@@ -1,7 +1,15 @@
 cd C:\Users\user\Desktop\IDHMS\idhms_be\ && venv\Scripts\activate
 python manage.py runserver
 
+
+cd C:\Users\namit\OneDrive\Desktop\IDHMS\idhms_be
+venv\Scripts\activate
+
+python manage.py runserver
+
+
 cd C:\Users\user\Desktop\IDHMS\idhms_be\ && venv\Scripts\activate && python manage.py runserver
+cd C:\Users\namit\OneDrive\Desktop\IDHMS\idhms_be && venv\Scripts\activate && python manage.py runserver
 
 # Run the database initialization script to create tables
 python main.py

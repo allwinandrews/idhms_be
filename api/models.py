@@ -6,21 +6,33 @@ from rest_framework import serializers
 from datetime import date
 from django.core.validators import RegexValidator
 
-
 class CustomUserManager(BaseUserManager):
     """
-    Custom user manager to handle user creation using email as the primary identifier.
+    Custom user manager for handling user creation using email as the primary identifier.
+    Provides methods to create regular users and superusers.
     """
 
     def create_user(self, email, password=None, roles=None, **extra_fields):
         """
-        Create and return a regular user with an email, password, and optional roles.
+        Creates and returns a regular user with an email, password, and optional roles.
+
+        Args:
+            email (str): User's email address (primary identifier).
+            password (str, optional): User's password.
+            roles (list, optional): List of role names to assign to the user.
+            **extra_fields: Additional user fields.
+
+        Returns:
+            User: The created user instance.
+
+        Raises:
+            ValueError: If the email field is missing.
         """
         if not email:
-            raise ValueError("The Email field is required")
+            raise ValueError("The Email field is required.")
+
         email = self.normalize_email(email)
         extra_fields.setdefault("is_active", True)
-        # extra_fields.setdefault("username", None)  # Handle absence of username
 
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
@@ -34,18 +46,52 @@ class CustomUserManager(BaseUserManager):
 
     def create_superuser(self, email, password=None, roles=None, **extra_fields):
         """
-        Create and return a superuser with an email, password, and optional roles.
+        Creates and returns a superuser with an email, password, and optional roles.
+
+        Args:
+            email (str): Superuser's email address.
+            password (str, optional): Superuser's password.
+            roles (list, optional): List of role names to assign to the superuser.
+            **extra_fields: Additional user fields.
+
+        Returns:
+            User: The created superuser instance.
+
+        Raises:
+            ValueError: If required superuser fields are not correctly set.
         """
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
 
-        if extra_fields.get("is_staff") is not True:
+        if not extra_fields.get("is_staff"):
             raise ValueError("Superuser must have is_staff=True.")
-        if extra_fields.get("is_superuser") is not True:
+        if not extra_fields.get("is_superuser"):
             raise ValueError("Superuser must have is_superuser=True.")
 
-        roles = roles or ["Admin"]  # Default role for superusers
-        return self.create_user(email, password, roles=roles, **extra_fields)
+        roles = roles or ["admin"]  # Default role for superusers
+
+        user = self.create_user(email, password, roles=[], **extra_fields)
+        self._assign_roles(user, roles)  # Assign roles after creation
+        return user
+
+    def _assign_roles(self, user, roles):
+        """
+        Assigns roles to a user. Ensures that all roles exist before assignment.
+
+        Args:
+            user (User): The user instance.
+            roles (list): List of role names to assign.
+
+        Raises:
+            ValidationError: If role assignment fails.
+        """
+        role_objects = []
+        for role_name in roles:
+            role, created = Role.objects.get_or_create(name=role_name)
+            role_objects.append(role)
+
+        user.roles.set(role_objects)
+
 
 
 class Role(models.Model):
@@ -56,7 +102,7 @@ class Role(models.Model):
     name = models.CharField(
         max_length=20,
         unique=True,
-        help_text="The unique name of the role (e.g., Admin, Patient, etc.).",
+        help_text="The unique name of the role (e.g., admin, patient, etc.).",
     )
 
     def __str__(self):
@@ -69,10 +115,10 @@ class User(AbstractUser):
     """
 
     ROLE_CHOICES = [
-        ("Admin", "Admin"),
-        ("Dentist", "Dentist"),
-        ("Receptionist", "Receptionist"),
-        ("Patient", "Patient"),
+        ("admin", "admin"),
+        ("dentist", "dentist"),
+        ("receptionist", "receptionist"),
+        ("patient", "patient"),
     ]
 
     BLOOD_GROUP_CHOICES = [
@@ -158,12 +204,17 @@ class User(AbstractUser):
         )
         return f"{self.email} ({roles})"
 
-
 class Appointment(models.Model):
     STATUS_CHOICES = [
         ("Scheduled", "Scheduled"),
         ("Completed", "Completed"),
         ("Cancelled", "Cancelled"),
+    ]
+
+    APPOINTMENT_TYPE_CHOICES = [
+        ("checkup", "Checkup"),
+        ("surgery", "Surgery"),
+        ("consultation", "Consultation"),
     ]
 
     patient = models.ForeignKey(
@@ -179,21 +230,26 @@ class Appointment(models.Model):
         related_name="dentist_appointments",
     )
     appointment_date = models.DateTimeField()
+    appointment_type = models.CharField(
+        max_length=20, choices=APPOINTMENT_TYPE_CHOICES, default="checkup"
+    )
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default="Scheduled"
     )
 
+    # ✅ Fix: Add missing created_at and updated_at fields
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
     def clean(self):
-        """
-        Custom validation to ensure the correct roles for patient and dentist.
-        """
-        if not self.patient.roles.filter(name="Patient").exists():
+        """Ensure the correct roles for patient and dentist."""
+        if not self.patient.roles.filter(name="patient").exists():
             raise serializers.ValidationError(
-                f"User {self.patient.email} must have the 'Patient' role."
+                f"User {self.patient.email} must have the 'patient' role."
             )
-        if self.dentist and not self.dentist.roles.filter(name="Dentist").exists():
+        if self.dentist and not self.dentist.roles.filter(name="dentist").exists():
             raise serializers.ValidationError(
-                f"User {self.dentist.email} must have the 'Dentist' role."
+                f"User {self.dentist.email} must have the 'dentist' role."
             )
 
     def __str__(self):
@@ -213,9 +269,9 @@ class Billing(models.Model):
         """
         Custom validation to ensure the correct role for the patient.
         """
-        if not self.patient.roles.filter(name="Patient").exists():
+        if not self.patient.roles.filter(name="patient").exists():
             raise serializers.ValidationError(
-                f"User {self.patient.email} must have the 'Patient' role."
+                f"User {self.patient.email} must have the 'patient' role."
             )
 
     def __str__(self):

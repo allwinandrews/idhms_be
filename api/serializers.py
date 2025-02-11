@@ -128,7 +128,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         required=True,
     )
     guardian = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(roles__name="Patient"), required=False
+        queryset=User.objects.filter(roles__name="patient"), required=False
     )
     guardian_data = GuardianSerializer(required=False)
     roles = serializers.SlugRelatedField(
@@ -268,36 +268,33 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 class BulkRegisterSerializer(serializers.Serializer):
     users = serializers.ListField(
-        child=serializers.DictField(),  # Accept dictionaries for each user
+        child=serializers.DictField(),
         allow_empty=False,
         help_text="A list of user registration data.",
     )
 
     def validate(self, data):
         """
-        Validate bulk user data.
+        Validate bulk user data, ensuring unique emails and correct roles.
         """
         # Validate unique emails within the bulk request
-        emails = [
-            user_data["email"] for user_data in data["users"] if "email" in user_data
-        ]
+        emails = [user_data["email"].lower() for user_data in data["users"] if "email" in user_data]
         duplicate_emails = {email for email in emails if emails.count(email) > 1}
 
         if duplicate_emails:
             raise serializers.ValidationError(
-                {
-                    "users": f"Duplicate emails found in the request: {', '.join(duplicate_emails)}"
-                }
+                {"users": f"Duplicate emails found in the request: {', '.join(duplicate_emails)}"}
             )
 
-        # Validate roles explicitly
-        valid_roles = set(Role.objects.values_list("name", flat=True))
+        # Fetch all valid role names from the database in **lowercase**
+        valid_roles = set(Role.objects.values_list("name", flat=True))  # Already lowercase in DB
         logger.debug(f"Valid roles from DB: {valid_roles}")
 
         for idx, user_data in enumerate(data["users"]):
-            roles = user_data.get("roles", [])
+            roles = [role.lower() for role in user_data.get("roles", [])]  # Convert input roles to lowercase
             logger.debug(f"Validating roles for user {idx}: {roles}")
 
+            # Check if all roles exist in the database
             invalid_roles = [role for role in roles if role not in valid_roles]
             if invalid_roles:
                 logger.error(f"Invalid roles found for user {idx}: {invalid_roles}")
@@ -313,18 +310,22 @@ class BulkRegisterSerializer(serializers.Serializer):
         """
         users_data = validated_data["users"]
         created_users = []
-        response_details = []  # Collect details for success and failure
+        response_details = []
 
         with transaction.atomic():
             for idx, user_data in enumerate(users_data):
                 try:
                     logger.debug(f"Processing user {idx}: {user_data}")
 
-                    # Convert roles to Role objects
+                    # Convert roles to lowercase for filtering
                     roles = user_data.pop("roles", [])
-                    logger.debug(f"Converting roles to Role objects: {roles}")
+                    logger.debug(f"Roles received: {roles}")
+
+                    # Ensure roles exist in DB (already lowercase)
                     role_objects = Role.objects.filter(name__in=roles)
-                    user_data["roles"] = role_objects
+                    logger.debug(f"Roles matched in DB: {[role.name for role in role_objects]}")
+
+                    user_data["roles"] = role_objects  # Attach role objects
 
                     # Create the user using RegisterSerializer
                     serializer = RegisterSerializer(data=user_data)
@@ -332,7 +333,6 @@ class BulkRegisterSerializer(serializers.Serializer):
                     user = serializer.save()
                     created_users.append(user)
 
-                    # Add success detail
                     response_details.append(
                         {
                             "email": user.email,
@@ -342,18 +342,16 @@ class BulkRegisterSerializer(serializers.Serializer):
                     )
 
                 except serializers.ValidationError as e:
-                    # Handle validation errors
                     logger.error(f"Validation error for user {idx}: {e.detail}")
                     response_details.append(
                         {
                             "email": user_data.get("email", "Unknown"),
                             "status": "failed",
-                            "errors": e.detail,  # Provide detailed validation errors
+                            "errors": e.detail,
                         }
                     )
 
                 except Exception as e:
-                    # Handle unexpected errors
                     logger.error(f"Unexpected error for user {idx}: {str(e)}")
                     response_details.append(
                         {
@@ -369,36 +367,91 @@ class BulkRegisterSerializer(serializers.Serializer):
             "details": response_details,
         }
 
-
 class AppointmentSerializer(serializers.ModelSerializer):
-    # Serializer for the Appointment model.
-    # Handles serialization and validation for appointments.
+    appointment_time = serializers.SerializerMethodField()
+    patient_details = serializers.SerializerMethodField()
+    dentist_details = serializers.SerializerMethodField()
+
     class Meta:
         model = Appointment
-        fields = ["id", "patient", "dentist", "appointment_date", "status"]
-        read_only_fields = ["id"]  # ID is automatically generated
+        fields = [
+            "id",
+            "patient",
+            "patient_details",
+            "dentist",
+            "dentist_details",
+            "appointment_date",
+            "appointment_time",
+            "appointment_type",
+            "reason_for_visit",
+            "status",
+            "notes",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def get_appointment_time(self, obj):
+        """Extracts time from `appointment_date`."""
+        return obj.appointment_date.strftime("%H:%M:%S") if obj.appointment_date else None
+
+    def get_patient_details(self, obj):
+        """Returns full patient details."""
+        if not obj.patient:
+            return None  # ✅ Prevents crashes when patient is missing
+
+        return {
+            "id": obj.patient.id,
+            "name": f"{obj.patient.first_name} {obj.patient.last_name}",
+            "email": obj.patient.email,
+            "phone": obj.patient.contact_info,
+            "date_of_birth": obj.patient.dob.strftime("%Y-%m-%d") if obj.patient.dob else None,
+            "gender": obj.patient.gender,
+            "address": getattr(obj.patient, "address", ""),
+            "emergency_contact": {
+                "name": getattr(obj.patient, "emergency_contact_name", ""),
+                "phone": getattr(obj.patient, "emergency_contact_phone", ""),
+            },
+            "insurance_provider": getattr(obj.patient, "insurance_provider", None),
+            "medical_history": obj.patient.medical_history.split(",") if hasattr(obj.patient, "medical_history") else [],
+        }
+
+    def get_dentist_details(self, obj):
+        """Returns full dentist details."""
+        if not obj.dentist:
+            return None  # ✅ Prevents crashes when dentist is missing
+
+        return {
+            "id": obj.dentist.id,
+            "name": f"{obj.dentist.first_name} {obj.dentist.last_name}",
+            "specialty": getattr(obj.dentist, "specialty", ""),
+            "email": obj.dentist.email,
+            "phone": obj.dentist.contact_info,
+            "license_number": getattr(obj.dentist, "license_number", ""),
+            "years_of_experience": getattr(obj.dentist, "years_of_experience", 0),
+            "clinic_address": getattr(obj.dentist, "clinic_address", ""),
+            "available_slots": [
+                {"date": slot.date.strftime("%Y-%m-%d"), "time": slot.time.strftime("%H:%M")}
+                for slot in getattr(obj.dentist, "available_slots", [])
+            ],
+        }
 
     def validate_appointment_date(self, value):
-        """
-        Ensure the appointment date is not in the past.
-        """
-        # Ensure timezone-awareness
-        print(f"appointment_date: {value}, now: {timezone.now()}")
-        if not is_aware(value):
+        """Ensure the appointment date is not in the past."""
+        if value.tzinfo is None:  # ✅ Only convert if it's naive
             value = make_aware(value)
 
         if value < timezone.now():
             raise serializers.ValidationError("Appointment date cannot be in the past.")
+
         return value
 
     def validate(self, data):
-        # Use instance values if fields are missing in partial updates
+        """Ensure patient and dentist are not the same."""
         patient = data.get("patient", getattr(self.instance, "patient", None))
         dentist = data.get("dentist", getattr(self.instance, "dentist", None))
 
-        # Check if patient and dentist are the same
-        if patient == dentist:
-            raise serializers.ValidationError(
-                "Patient and Dentist cannot be the same person."
-            )
+        if patient and dentist and patient == dentist:
+            raise serializers.ValidationError("Patient and dentist cannot be the same person.")
+
         return data

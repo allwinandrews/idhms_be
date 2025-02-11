@@ -8,7 +8,7 @@ This project serves as the backend for the **Intelligent Dental Hospital Managem
 
 - **User Management:**
 
-  - Role-based access control (`Admin`, `Receptionist`, `Dentist`, `Patient`).
+  - Role-based access control (`admin`, `receptionist`, `dentist`, `patient`).
   - Support for multiple roles per user.
   - Guardian assignment for dependent patients.
 
@@ -135,7 +135,7 @@ pytest api/tests/
 
 ### User Management
 
-- **GET** `/api/users/` - List all users (Admin-only).
+- **GET** `/api/users/` - List all users (admin-only).
 - **GET/PUT/DELETE** `/api/users/<int:id>/` - Manage specific users.
 
 ### Additional Endpoints

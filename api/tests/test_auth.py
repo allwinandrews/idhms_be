@@ -16,7 +16,7 @@ def test_register_user(api_client):
         {
             "email": "test@example.com",
             "password": "StrongPassword123!",
-            "roles": ["Patient"],
+            "roles": ["patient"],
             "dob": "1990-01-01",
             "contact_info": "+1234567890",
             "first_name": "Test",
@@ -48,7 +48,7 @@ def test_register_user(api_client):
             "last_name": "User",
             "email": "test@example.com",
             "password": "StrongPassword123!",
-            "role": "Patient",
+            "role": "patient",
             "dob": "1990-01-01",
             "contact_info": "+1234567890",
         },
@@ -67,7 +67,7 @@ def test_register_dependent_with_inline_guardian(api_client, setup_roles):
         {
             "first_name": "Dependent",
             "last_name": "Smith",
-            "roles": ["Patient"],
+            "roles": ["patient"],
             "dob": "2024-01-01",
             "gender": "Male",
             "blood_group": "O+",
@@ -77,7 +77,7 @@ def test_register_dependent_with_inline_guardian(api_client, setup_roles):
                 "email": "johndoe@example.com",
                 "password": "SecurePassword123",
                 "contact_info": "+1234567890",
-                "roles": ["Patient"],
+                "roles": ["patient"],
                 "dob": "1990-01-01",  # Added dob
                 "gender": "Male",  # Added gender
                 "blood_group": "O+",  # Added blood_group
@@ -98,7 +98,7 @@ def test_login_user(api_client, create_user):
     """
     # Create a test user
     create_user(
-        email="validuser@example.com", password="testpassword", roles=["Patient"]
+        email="validuser@example.com", password="testpassword", roles=["patient"]
     )
 
     # Positive: Valid login
@@ -135,7 +135,7 @@ def test_token_refresh(api_client, create_user):
     """
     # Create a test user and login to get refresh token
     create_user(
-        email="refreshuser@example.com", password="testpassword", roles=["Patient"]
+        email="refreshuser@example.com", password="testpassword", roles=["patient"]
     )
     response = api_client.post(
         "/api/login/", {"email": "refreshuser@example.com", "password": "testpassword"}
@@ -177,7 +177,7 @@ def test_bulk_register_users(api_client, create_user, setup_roles):
     """
     # Create an admin user and authenticate
     admin_user = create_user(
-        email="admin@example.com", password="admin_pass", roles=["Admin"]
+        email="admin@example.com", password="admin_pass", roles=["admin"]
     )
     response = api_client.post(
         "/api/login/", {"email": "admin@example.com", "password": "admin_pass"}
@@ -189,7 +189,7 @@ def test_bulk_register_users(api_client, create_user, setup_roles):
     assert admin_token is not None  # Ensure the token exists
 
     # Set the token in the test client for authentication
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {admin_token.value}")
+    api_client.cookies["access_token"] = admin_token.value
 
     # Positive: Valid bulk registration
     valid_payload = {
@@ -197,7 +197,7 @@ def test_bulk_register_users(api_client, create_user, setup_roles):
             {
                 "email": "user1@example.com",
                 "password": "Password123!",
-                "roles": ["Patient"],
+                "roles": ["patient"],
                 "dob": "1990-01-01",
                 "contact_info": "+1234567890",
                 "first_name": "User1",
@@ -208,7 +208,7 @@ def test_bulk_register_users(api_client, create_user, setup_roles):
             {
                 "email": "user2@example.com",
                 "password": "SecurePass456!",
-                "roles": ["Receptionist", "Dentist"],
+                "roles": ["receptionist", "dentist"],
                 "dob": "1985-05-15",
                 "contact_info": "+9876543210",
                 "first_name": "User2",
@@ -235,7 +235,7 @@ def test_bulk_register_users_non_admin(api_client, create_user, setup_roles):
     """
     # Create a non-admin user and authenticate
     patient_user = create_user(
-        email="patient@example.com", password="patient_pass", roles=["Patient"]
+        email="patient@example.com", password="patient_pass", roles=["patient"]
     )
     response = api_client.post(
         "/api/login/", {"email": "patient@example.com", "password": "patient_pass"}
@@ -247,7 +247,7 @@ def test_bulk_register_users_non_admin(api_client, create_user, setup_roles):
     assert patient_token is not None  # Ensure the token exists
 
     # Set the token in the test client for authentication
-    api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {patient_token.value}")
+    api_client.cookies["access_token"] = patient_token.value
 
     # Attempt bulk registration
     valid_payload = {
@@ -255,7 +255,7 @@ def test_bulk_register_users_non_admin(api_client, create_user, setup_roles):
             {
                 "email": "user1@example.com",
                 "password": "Password123!",
-                "roles": ["Patient"],
+                "roles": ["patient"],
                 "dob": "1990-01-01",
                 "contact_info": "+1234567890",
                 "first_name": "User1",
