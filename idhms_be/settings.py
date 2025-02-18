@@ -10,6 +10,7 @@ For the full list of settings and their values, see:
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+from datetime import timedelta
 import os
 from pathlib import Path
 import dj_database_url
@@ -27,11 +28,11 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "your-default-insecure-secret-key")
 # SECURITY WARNING: Don't run with debug turned on in production!
 DEBUG = os.getenv("DJANGO_DEBUG", "True") == "True"
 
-ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS",
+                          "localhost,127.0.0.1").split(",")
 
 AUTH_USER_MODEL = "api.User"
 
-from datetime import timedelta
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(seconds=int(os.getenv("JWT_ACCESS_TOKEN_LIFETIME", 3600))),
@@ -44,7 +45,8 @@ SIMPLE_JWT = {
     "AUTH_COOKIE": "access_token",
     "AUTH_COOKIE_REQUIRED": True,
     "AUTH_COOKIE_HTTP_ONLY": True,
-    "AUTH_COOKIE_SECURE": os.getenv("AUTH_COOKIE_SECURE", "False") == "True",  # Use True in production
+    # Use True in production
+    "AUTH_COOKIE_SECURE": os.getenv("AUTH_COOKIE_SECURE", "False") == "True",
     "AUTH_COOKIE_SAMESITE": os.getenv("AUTH_COOKIE_SAMESITE", "Lax")
 }
 
@@ -59,6 +61,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",  # ✅ Required for blacklisting
     "api",
     "corsheaders",
     "pytest",
@@ -73,8 +76,10 @@ AUTHENTICATION_BACKENDS = [
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "authentication.CookieJWTAuthentication",  # 🔥 Use custom cookie authentication
-        "rest_framework_simplejwt.authentication.JWTAuthentication",  # Keep standard JWT auth as fallback
-        "rest_framework.authentication.SessionAuthentication",  # ✅ Ensure Django Admin still works
+        # Keep standard JWT auth as fallback
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        # ✅ Ensure Django Admin still works
+        "rest_framework.authentication.SessionAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
 }
@@ -86,15 +91,16 @@ SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "False") == "True"
 CSRF_COOKIE_HTTPONLY = os.getenv("CSRF_COOKIE_HTTPONLY", "True") == "True"
 SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
 CSRF_COOKIE_SAMESITE = os.getenv("CSRF_COOKIE_SAMESITE", "Lax")
-SESSION_COOKIE_HTTPONLY = os.getenv("SESSION_COOKIE_HTTPONLY", "True") == "True"
+SESSION_COOKIE_HTTPONLY = os.getenv(
+    "SESSION_COOKIE_HTTPONLY", "True") == "True"
 
 # CORS settings
 CORS_ALLOW_CREDENTIALS = True
 # CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000").split(",")
-CORS_ALLOWED_ORIGINS = ['http://localhost:3000','http://127.0.0.1:3000']
+CORS_ALLOWED_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000']
 CORS_ALLOW_ALL_ORIGINS = False
 
-CSRF_TRUSTED_ORIGINS = ['http://localhost:3000','http://127.0.0.1:3000']
+CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'http://127.0.0.1:3000']
 
 
 # Middleware
@@ -117,7 +123,8 @@ ROOT_URLCONF = "idhms_be.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / "templates"],  # Ensure this directory exists for templates
+        # Ensure this directory exists for templates
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [

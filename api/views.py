@@ -1,16 +1,22 @@
-from django.shortcuts import render
-from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
 from rest_framework_simplejwt.views import TokenRefreshView
-from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+from rest_framework import serializers
+import pyotp
+from rest_framework.permissions import IsAuthenticated
+from django.shortcuts import render
+from rest_framework.views import APIView
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.generics import ListCreateAPIView, RetrieveUpdateDestroyAPIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import update_last_login
 from api.serializers import (
@@ -46,18 +52,20 @@ class AdminOnlyView(APIView):
         print(f"User: {request.user}, Roles: {request.user.roles.all()}")
         return Response({"message": "Welcome, admin!"})
 
+
 class AdminAnalyticsView(APIView):
     """
     Provides aggregated analytics for the Admin Dashboard.
     Requires admin access.
     """
     permission_classes = [IsAuthenticated, IsAdmin]
-    
+
     def get(self, request):
         try:
             # --- User Statistics ---
             total_users = User.objects.count()
-            active_users = User.objects.filter(last_login__gte=now() - timedelta(days=7)).count()
+            active_users = User.objects.filter(
+                last_login__gte=now() - timedelta(days=7)).count()
 
             # Count users by role
             users_by_role = (
@@ -65,7 +73,8 @@ class AdminAnalyticsView(APIView):
                 .annotate(count=Count("id"))
                 .order_by()
             )
-            role_counts = {entry["roles__name"]: entry["count"] for entry in users_by_role}
+            role_counts = {entry["roles__name"]: entry["count"]
+                           for entry in users_by_role}
 
             # --- Appointment Statistics ---
             total_appointments = Appointment.objects.count()
@@ -75,7 +84,8 @@ class AdminAnalyticsView(APIView):
                 .annotate(count=Count("id"))
                 .order_by()
             )
-            appointment_counts = {entry["status"]: entry["count"] for entry in appointment_statuses}
+            appointment_counts = {entry["status"]: entry["count"]
+                                  for entry in appointment_statuses}
 
             # --- User Growth in Last 7 Days ---
             recent_users = (
@@ -85,7 +95,8 @@ class AdminAnalyticsView(APIView):
                 .annotate(count=Count("id"))
                 .order_by("day")
             )
-            user_growth = [{"date": entry["day"], "new_users": entry["count"]} for entry in recent_users]
+            user_growth = [{"date": entry["day"], "new_users": entry["count"]}
+                           for entry in recent_users]
 
             # --- Most Active Users ---
             most_active_users = (
@@ -104,12 +115,14 @@ class AdminAnalyticsView(APIView):
 
             # --- Top Dentists by Appointments ---
             top_dentists = (
-                User.objects.filter(roles__name="dentist")  # Case-insensitive role match
+                # Case-insensitive role match
+                User.objects.filter(roles__name="dentist")
                 .annotate(appointment_count=Count("dentist_appointments"))
                 .order_by("-appointment_count")[:5]
             )
             top_dentists_list = [
-                {"name": f"{dentist.first_name} {dentist.last_name}".strip(), "appointments": dentist.appointment_count}
+                {"name": f"{dentist.first_name} {dentist.last_name}".strip(
+                ), "appointments": dentist.appointment_count}
                 for dentist in top_dentists
             ]
 
@@ -134,6 +147,33 @@ class AdminAnalyticsView(APIView):
 
 # --- Custom JWT Token Views ---
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    Custom JWT Login Serializer that enforces MFA if enabled.
+    """
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        user = self.user
+
+        # ✅ Enforce MFA if enabled
+        if user.is_mfa_enabled:
+            if "mfa_code" not in self.context["request"].data:
+                raise serializers.ValidationError(
+                    {"detail": "MFA verification required."}
+                )
+
+            mfa_code = self.context["request"].data["mfa_code"]
+            totp = pyotp.TOTP(user.mfa_secret)
+
+            if not totp.verify(mfa_code):
+                raise serializers.ValidationError(
+                    {"detail": "Invalid MFA code."}
+                )
+
+        # ✅ Ensure roles are included in the token and response
+        data["roles"] = list(user.roles.values_list("name", flat=True))
+        return data
+
     @classmethod
     def get_token(cls, user):
         """
@@ -141,20 +181,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         Includes the user's roles.
         """
         token = super().get_token(user)
-        token["roles"] = list(
-            user.roles.values_list("name", flat=True)
-        )  # Add all roles to the token
+        token["roles"] = list(user.roles.values_list("name", flat=True))
         return token
-
-    def validate(self, attrs):
-        """
-        Validates user credentials and includes additional role information in the response.
-        """
-        data = super().validate(attrs)
-        data["roles"] = list(
-            self.user.roles.values_list("name", flat=True)
-        )  # Include all roles in the response
-        return data
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -163,41 +191,62 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     def post(self, request, *args, **kwargs):
         """
         Override post method to include tokens and roles in HttpOnly cookies.
+        Handles MFA enforcement if enabled.
         """
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(
+            data=request.data, context={"request": request}
+        )
+
         try:
             serializer.is_valid(raise_exception=True)
-        except AuthenticationFailed:
-            return Response(
-                {"detail": "No active account found with the given credentials."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Access and refresh tokens
-        access_token = serializer.validated_data["access"]
-        refresh_token = serializer.validated_data["refresh"]
+        user = serializer.user  # Get authenticated user
 
-        # Retrieve user's roles
-        user = serializer.user
-        roles = list(user.roles.values_list("name", flat=True))
+        # ✅ Enforce MFA verification before issuing tokens
+        if user.is_mfa_enabled:
+            mfa_code = request.data.get("mfa_code")
+
+            # If no MFA code is provided, prompt for verification
+            if not mfa_code:
+                return Response(
+                    {
+                        "message": "MFA required. Please verify your MFA code.",
+                        "mfa_required": True
+                    },
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            # ✅ Validate MFA Code
+            totp = pyotp.TOTP(user.mfa_secret)
+            if not totp.verify(mfa_code):
+                return Response(
+                    {"detail": "Invalid MFA code."},
+                    status=status.HTTP_401_UNAUTHORIZED
+                )
+
+        # ✅ Generate Access and Refresh Tokens
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
+        roles = serializer.validated_data["roles"]
 
         response = Response(
             {
                 "message": "Login successful!",
-                "roles": roles,  # Include roles in the response
+                "roles": roles,
             },
             status=status.HTTP_200_OK,
         )
 
-        # Set tokens in HttpOnly cookies
+        # ✅ Store tokens securely in HttpOnly cookies
         response.set_cookie(
             key="access_token",
             value=access_token,
             httponly=True,
             secure=True,  # Set to True in production
-            samesite="None",  # Adjust based on your needs
+            samesite="None",
         )
         response.set_cookie(
             key="refresh_token",
@@ -216,33 +265,29 @@ class CustomTokenRefreshView(TokenRefreshView):
     """
 
     def post(self, request, *args, **kwargs):
-        # Extract the refresh token from the HttpOnly cookie
-        print("All cookies in the request:", request.COOKIES)
-        print("All headers in the request:", request.headers)
+        # ✅ Extract the refresh token from the HttpOnly cookie
         refresh_token = request.COOKIES.get("refresh_token")
+
         if not refresh_token:
-            print("Refresh token not found in cookies.")
-            # Token is missing
             return Response(
                 {"detail": "Refresh token is missing."},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        # Validate the refresh token explicitly
+        # ✅ Validate the refresh token explicitly
         try:
             token = RefreshToken(refresh_token)
             token.check_exp()  # Check if the token is expired
-            print("Token is valid.")
-        except TokenError as e:
-            print("Invalid token:", str(e))
+        except TokenError:
             return Response(
                 {"detail": "Invalid refresh token."},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
-        # Prepare data for the serializer
+        # ✅ Use the serializer to refresh the access token
         data = {"refresh": refresh_token}
         serializer = self.get_serializer(data=data)
+
         try:
             serializer.is_valid(raise_exception=True)
         except InvalidToken:
@@ -253,15 +298,16 @@ class CustomTokenRefreshView(TokenRefreshView):
         except Exception as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Extract the new access token from the serializer
+        # ✅ Extract the new access token
         new_access_token = serializer.validated_data.get("access")
+
         if not new_access_token:
             return Response(
                 {"detail": "Failed to generate a new access token."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        # Set the new access token in an HttpOnly cookie
+        # ✅ Set the new access token in an HttpOnly cookie
         response = Response(
             {"message": "Token refreshed successfully!"}, status=status.HTTP_200_OK
         )
@@ -290,19 +336,132 @@ class LogoutView(APIView):
         if refresh_token:
             try:
                 token = RefreshToken(refresh_token)
-                token.blacklist()  # Blacklist the refresh token
-                logger.info(f"Blacklisted refresh token for user: {request.user.email}")
+                if hasattr(token, "blacklist"):
+                    token.blacklist()  # ✅ Ensure the refresh token is blacklisted
+                    logger.info(
+                        f"Blacklisted refresh token for user: {request.user.email}")
+                else:
+                    logger.warning("Token blacklisting not supported.")
             except Exception as e:
                 logger.error(f"Error blacklisting token: {str(e)}")
 
-        # Clear JWT tokens from cookies
-        response = Response({"message": "Logout successful!"}, status=status.HTTP_200_OK)
-        response.delete_cookie("access_token")
-        response.delete_cookie("refresh_token")
+        # ✅ Force the cookies to expire immediately
+        response = Response({"message": "Logout successful!"},
+                            status=status.HTTP_200_OK)
+        response.set_cookie("access_token", "", max_age=0,
+                            httponly=True, samesite="None")
+        response.set_cookie("refresh_token", "", max_age=0,
+                            httponly=True, samesite="None")
 
         return response
 
+
+class EnableMFAView(APIView):
+    """Allows users to enable Multi-Factor Authentication (MFA)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+
+        # Prevent enabling MFA if it's already active
+        if user.is_mfa_enabled:
+            return Response(
+                {"detail": "MFA is already enabled for this account."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Generate a new MFA secret
+        secret = user.generate_mfa_secret()
+
+        # Generate a QR code URL for Google Authenticator
+        otp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
+            name=user.email, issuer_name="IDHMS System"
+        )
+
+        return Response(
+            {
+                "message": "MFA enabled successfully.",
+                "qr_code_url": otp_uri,
+                "secret": secret,  # Display only for debugging
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class VerifyMFAView(APIView):
+    """Verifies MFA code during login and issues tokens upon successful verification."""
+    permission_classes = [
+        AllowAny]  # ✅ Allow verification without authentication
+
+    def post(self, request):
+        email = request.data.get("email")
+        mfa_code = request.data.get("mfa_code")
+
+        if not email or not mfa_code:
+            return Response({"detail": "Email and MFA code are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email=email).first()
+        if not user or not user.is_mfa_enabled:
+            return Response({"detail": "Invalid user or MFA not enabled."}, status=status.HTTP_400_BAD_REQUEST)
+
+        totp = pyotp.TOTP(user.mfa_secret)
+        if not totp.verify(mfa_code):
+            return Response({"detail": "Invalid MFA code."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # ✅ MFA Verification Successful: Generate Tokens
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
+
+        response = Response(
+            {"message": "MFA verification successful."},
+            status=status.HTTP_200_OK
+        )
+
+        # ✅ Store tokens securely in HttpOnly cookies
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=True,  # Set to True in production
+            samesite="None",
+        )
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            httponly=True,
+            secure=True,  # Set to True in production
+            samesite="None",
+        )
+
+        return response
+
+
+class DisableMFAView(APIView):
+    """Allows users to disable MFA if they have previously enabled it."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+
+        if not user.is_mfa_enabled:
+            return Response(
+                {"detail": "MFA is already disabled."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Disable MFA
+        user.disable_mfa()
+
+        return Response(
+            {"message": "MFA has been disabled successfully."},
+            status=status.HTTP_200_OK,
+        )
+
+
 # --- Register View ---
+
+
 class RegisterView(APIView):
     """
     API endpoint for user registration with support for blood group, roles, and Dependent registration.
@@ -329,16 +488,19 @@ class RegisterView(APIView):
                     "roles": list(
                         user.roles.values_list("name", flat=True)
                     ),  # Include all assigned roles
+                    "guardian": (
+                        {
+                            "id": user.guardian.id,
+                            "email": user.guardian.email,
+                            "first_name": user.guardian.first_name,
+                            "last_name": user.guardian.last_name,
+                            "contact_info": user.guardian.contact_info,
+                        }
+                        if user.guardian
+                        else None  # Explicitly set to None instead of missing key
+                    )
                 }
 
-                # Include guardian details if applicable
-                if user.guardian:
-                    response_message["guardian"] = {
-                        "email": user.guardian.email,
-                        "first_name": user.guardian.first_name,
-                        "last_name": user.guardian.last_name,
-                        "contact_info": user.guardian.contact_info,
-                    }
                 logger.info(f"User {user.email} registered successfully.")
                 return Response(response_message, status=status.HTTP_201_CREATED)
             except Exception as e:
@@ -348,7 +510,8 @@ class RegisterView(APIView):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
-        logger.warning(f"Validation failed for registration: {serializer.errors}")
+        logger.warning(
+            f"Validation failed for registration: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -360,38 +523,38 @@ class BulkRegisterView(APIView):
     permission_classes = [IsAuthenticated, IsAdmin]
 
     def post(self, request):
-        # Instantiate the serializer with request data
+        logger.info("📌 Received Bulk Registration Request")
+        logger.info(f"📌 Request Data: {request.data}")
+
         serializer = BulkRegisterSerializer(data=request.data)
 
         if serializer.is_valid():
             try:
-                # Save validated users
-                result = (
-                    serializer.save()
-                )  # result contains success_count, failed_count, and details
-
-                # Construct response using serializer output
-                logger.info(f"{result['success_count']} users registered successfully.")
+                result = serializer.save()
+                logger.info(
+                    f"{result['success_count']} users registered successfully.")
                 return Response(result, status=status.HTTP_201_CREATED)
 
             except Exception as e:
-                logger.error(f"Unexpected error during bulk registration: {str(e)}")
+                logger.error(
+                    f"Unexpected error during bulk registration: {str(e)}")
                 return Response(
                     {"error": "An unexpected error occurred."},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
-        # Handle validation errors
-        logger.warning(f"Validation failed for bulk registration: {serializer.errors}")
+        logger.warning(
+            f"Validation failed for bulk registration: {serializer.errors}")
         response_data = {
             "success_count": 0,
             "failed_count": len(request.data.get("users", [])),
-            "details": serializer.errors,  # Include validation errors in the response
+            "details": serializer.errors,
         }
         return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
 
-
 # --- patient Data View ---
+
+
 class PatientDataView(APIView):
     """
     View to allow patients and optionally other roles to access patient-specific data.
@@ -475,7 +638,8 @@ class ReceptionistManagePatientsView(APIView):
                 },
                 status=201,
             )
-        print("Validation errors:", serializer.errors)  # Add this for debugging
+        # Add this for debugging
+        print("Validation errors:", serializer.errors)
         return Response(serializer.errors, status=400)
 
 
@@ -494,10 +658,13 @@ class AppointmentListView(ListCreateAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        roles = list(user.roles.values_list("name", flat=True))  # Retrieve all user roles
-        active_role = self.request.query_params.get("role")  # Get active role from frontend
+        # Retrieve all user roles
+        roles = list(user.roles.values_list("name", flat=True))
+        active_role = self.request.query_params.get(
+            "role")  # Get active role from frontend
 
-        print(f"User Roles: {roles}, Active Role: {active_role}, User ID: {user.id}")
+        print(
+            f"User Roles: {roles}, Active Role: {active_role}, User ID: {user.id}")
 
         if not active_role or active_role not in roles:
             return Appointment.objects.none()  # If no role is provided, return empty queryset
@@ -538,6 +705,8 @@ class AppointmentListView(ListCreateAPIView):
         return super().create(request, *args, **kwargs)
 
 # Appointment Detail View
+
+
 class AppointmentDetailView(RetrieveUpdateDestroyAPIView):
     """
     View to retrieve, update, or delete a specific appointment.
@@ -695,24 +864,58 @@ class RoleManagementView(APIView):
             return Response(
                 {"detail": "User not found."}, status=status.HTTP_404_NOT_FOUND
             )
+        print("📌 Request:", request.data)
+        print("📌 Extracted Roles from Request:", request.data.getlist("roles"))
 
-        new_roles = request.data.get("roles")
+        new_roles = request.data.getlist("roles")
         if not new_roles or not isinstance(new_roles, list):
             return Response(
-                {"detail": "A list of roles is required."},
+                {"detail": "A valid list of roles is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        roles_to_assign = Role.objects.filter(name__in=new_roles)
-        invalid_roles = set(new_roles) - set(role.name for role in roles_to_assign)
+        # ✅ Convert all requested role names to lowercase for case-insensitive comparison
+        new_roles = [role.lower() for role in new_roles]
+
+        # ✅ Fetch roles from the database with case-insensitive lookup
+        roles_to_assign = []
+        invalid_roles = []
+
+        for role in new_roles:
+            role_obj = Role.objects.filter(name__iexact=role).first()
+            if role_obj:
+                roles_to_assign.append(role_obj)
+            else:
+                invalid_roles.append(role)
+
+        print("📌 Matched Roles in DB:", [r.name for r in roles_to_assign])
+        print("📌 Checking DB Role Case:", list(
+            Role.objects.values_list("name", flat=True)))
+
         if invalid_roles:
             return Response(
-                {"detail": f"Invalid roles: {', '.join(invalid_roles)}."},
+                {"detail": f"Invalid roles provided: {', '.join(invalid_roles)}"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # ✅ Prevent non-superusers from assigning "admin" role
+        if "admin" in new_roles and not request.user.is_superuser:
+            return Response(
+                {"detail": "Only superusers can assign the 'admin' role."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # ✅ Ensure at least one role is assigned
+        if not roles_to_assign:
+            return Response(
+                {"detail": "A user must have at least one role assigned."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ✅ Assign roles and save
         user.roles.set(roles_to_assign)
         user.save()
+
         return Response(
             {
                 "detail": "Roles updated successfully.",
