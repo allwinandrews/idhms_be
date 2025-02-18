@@ -43,42 +43,53 @@ class CustomUserAdmin(UserAdmin):
     Custom admin configuration for the User model.
     """
 
-    # Display roles as a comma-separated list
+    # ✅ Display roles as a comma-separated list
     def get_roles(self, obj):
         return ", ".join([role.name for role in obj.roles.all()])
 
     get_roles.short_description = "Roles"
 
+    # ✅ Ensure nullable fields are handled properly in Admin
+    def get_dob(self, obj):
+        return obj.dob if obj.dob else "Not Provided"
+
+    def get_contact_info(self, obj):
+        return obj.contact_info if obj.contact_info else "Not Provided"
+
+    def get_gender(self, obj):
+        return obj.gender if obj.gender else "Not Specified"
+
+    get_dob.short_description = "Date of Birth"
+    get_contact_info.short_description = "Contact Info"
+    get_gender.short_description = "Gender"
+
+    # ✅ Use computed methods for safe display
     list_display = (
         "email",
-        "get_roles",  # Display multiple roles
+        "get_roles",
         "is_active",
         "is_staff",
-        "dob",
-        "contact_info",
+        "get_dob",  # ✅ Use method to handle NULL values
+        "get_contact_info",  # ✅ Use method to handle NULL values
         "first_name",
         "last_name",
-        "gender",
+        "get_gender",  # ✅ Use method to handle NULL values
     )
 
-    # Filter by roles (using the related Role model)
-    list_filter = ("roles", "is_active", "is_staff", "gender")
+    # ✅ Ensure list_filter only references valid model fields
+    list_filter = ("roles", "is_active", "is_staff")
 
-    # Allow searching by email and roles
+    # ✅ Allow searching by email and role names
     search_fields = ("email", "roles__name")
 
     ordering = ("email",)
 
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        (
-            "Personal Info",
-            {"fields": ("dob", "contact_info", "first_name", "last_name", "gender")},
-        ),
-        (
-            "Roles and Permissions",
-            {"fields": ("roles", "is_active", "is_staff", "is_superuser")},
-        ),
+        ("Personal Info", {"fields": ("dob", "contact_info",
+         "first_name", "last_name", "gender")}),
+        ("Roles and Permissions", {
+         "fields": ("roles", "is_active", "is_staff", "is_superuser")}),
         ("Important Dates", {"fields": ("last_login", "date_joined")}),
     )
 
@@ -91,7 +102,7 @@ class CustomUserAdmin(UserAdmin):
                     "email",
                     "password1",
                     "password2",
-                    "roles",  # Allow adding multiple roles during user creation
+                    "roles",
                     "is_active",
                     "is_staff",
                 ),
@@ -99,20 +110,13 @@ class CustomUserAdmin(UserAdmin):
         ),
     )
 
-    # Inline models for related objects
+    # ✅ Inline models for related objects
     inlines = [AppointmentInline, BillingInline]
 
     def save_model(self, request, obj, form, change):
         """
-        Override save_model to validate roles assigned to a user.
+        Override save_model to handle user role updates correctly.
         """
-        # Ensure all assigned roles are valid
-        valid_roles = Role.objects.all()
-        assigned_roles = obj.roles.all()
-        if not set(assigned_roles).issubset(set(valid_roles)):
-            raise ValueError("Invalid roles assigned to the user.")
-
-        # Save the model normally if validation passes
         super().save_model(request, obj, form, change)
 
 

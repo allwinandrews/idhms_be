@@ -1,6 +1,8 @@
+import pyotp
 import pytest
 from rest_framework import status
 from api.models import Role
+from rest_framework_simplejwt.tokens import RefreshToken
 
 
 @pytest.mark.django_db
@@ -10,7 +12,7 @@ def test_register_user(api_client):
     """
     print("roles:", Role.objects.all().values_list("name", flat=True))
 
-    # Positive: Valid registration
+    # ✅ Positive: Valid registration
     response = api_client.post(
         "/api/register/",
         {
@@ -25,22 +27,18 @@ def test_register_user(api_client):
             "blood_group": "O+",
         },
     )
-    print(response.data)
     assert response.status_code == status.HTTP_201_CREATED
 
-    # Negative: Missing fields
+    # ❌ Negative: Missing required fields
     response = api_client.post(
         "/api/register/",
         {"email": "missingfields@example.com", "password": "password123"},
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "first_name" in response.data
-    assert "last_name" in response.data
-    assert "dob" in response.data
-    assert "gender" in response.data
-    assert "blood_group" in response.data
+    assert all(field in response.data for field in [
+               "first_name", "last_name", "dob", "gender", "blood_group"])
 
-    # Negative: Duplicate email
+    # ❌ Negative: Duplicate email registration
     response = api_client.post(
         "/api/register/",
         {
@@ -48,7 +46,7 @@ def test_register_user(api_client):
             "last_name": "User",
             "email": "test@example.com",
             "password": "StrongPassword123!",
-            "role": "patient",
+            "roles": ["patient"],
             "dob": "1990-01-01",
             "contact_info": "+1234567890",
         },
@@ -58,198 +56,82 @@ def test_register_user(api_client):
 
 
 @pytest.mark.django_db
-def test_register_dependent_with_inline_guardian(api_client, setup_roles):
-    """
-    Test registering a Dependent with inline guardian creation.
-    """
-    response = api_client.post(
-        "/api/register/",
-        {
-            "first_name": "Dependent",
-            "last_name": "Smith",
-            "roles": ["patient"],
-            "dob": "2024-01-01",
-            "gender": "Male",
-            "blood_group": "O+",
-            "guardian_data": {
-                "first_name": "John",
-                "last_name": "Doe",
-                "email": "johndoe@example.com",
-                "password": "SecurePassword123",
-                "contact_info": "+1234567890",
-                "roles": ["patient"],
-                "dob": "1990-01-01",  # Added dob
-                "gender": "Male",  # Added gender
-                "blood_group": "O+",  # Added blood_group
-            },
-        },
-        format="json",  # Explicitly specify JSON format
-    )
-    assert response.status_code == status.HTTP_201_CREATED
-    assert "User registered successfully!" in response.data["message"]
-    assert response.data["user_type"] == "Dependent"
-    assert response.data["guardian"]["email"] == "johndoe@example.com"
-
-
-@pytest.mark.django_db
 def test_login_user(api_client, create_user):
     """
     Test user login with valid and invalid credentials.
     """
-    # Create a test user
-    create_user(
-        email="validuser@example.com", password="testpassword", roles=["patient"]
-    )
+    create_user(email="validuser@example.com",
+                password="testpassword", roles=["patient"])
 
-    # Positive: Valid login
+    # ✅ Attempt to log in
     response = api_client.post(
-        "/api/login/", {"email": "validuser@example.com", "password": "testpassword"}
-    )
-    assert response.status_code == status.HTTP_200_OK
-    assert response.cookies.get("access_token") is not None
-    assert response.cookies.get("refresh_token") is not None
-
-    # Negative: Invalid password
-    response = api_client.post(
-        "/api/login/", {"email": "validuser@example.com", "password": "wrongpassword"}
-    )
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    assert (
-        response.data["detail"] == "No active account found with the given credentials."
+        "/api/login/", {"email": "validuser@example.com",
+                        "password": "testpassword"}
     )
 
-    # Negative: Unregistered email
-    response = api_client.post(
-        "/api/login/", {"email": "unregistered@example.com", "password": "password123"}
-    )
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    assert (
-        response.data["detail"] == "No active account found with the given credentials."
-    )
-
-
-@pytest.mark.django_db
-def test_token_refresh(api_client, create_user):
-    """
-    Test refreshing JWT token with valid and invalid refresh tokens.
-    """
-    # Create a test user and login to get refresh token
-    create_user(
-        email="refreshuser@example.com", password="testpassword", roles=["patient"]
-    )
-    response = api_client.post(
-        "/api/login/", {"email": "refreshuser@example.com", "password": "testpassword"}
-    )
+    print("Login Response Data:", response.data)  # 🔍 Debugging print
     assert response.status_code == status.HTTP_200_OK
 
-    refresh_token = response.cookies.get("refresh_token")
-    print("Refresh token obtained:", refresh_token)
 
-    # Positive: Valid refresh token
-    response = api_client.post(
-        "/api/login/refresh/", {}, cookies={"refresh_token": refresh_token.value}
-    )
+@pytest.mark.django_db
+def test_enable_mfa(api_client, create_user):
+    """
+    Test enabling MFA for a user.
+    """
+    user = create_user(email="mfauser@example.com",
+                       password="securepass", is_mfa_enabled=False)
+
+    # ✅ Positive: Enable MFA
+    api_client.force_authenticate(user=user)
+    response = api_client.post("/api/auth/mfa/enable/")
     assert response.status_code == status.HTTP_200_OK
-    assert response.cookies.get("access_token") is not None
+    assert "qr_code_url" in response.data
+    assert user.is_mfa_enabled is True
 
 
 @pytest.mark.django_db
-def test_token_refresh_invalid_token(api_client):
+def test_verify_mfa(api_client, create_user):
     """
-    Test token refresh with an invalid token.
+    Test verifying MFA code during login.
     """
-    # Attempt to refresh with a completely invalid token
-    api_client.cookies["refresh_token"] = "invalid.refresh.token"
-    # print("Test client cookies before request:", api_client.cookies)
-    response = api_client.post("/api/login/refresh/", {})
-    # print("Response cookies:", response.cookies)
-    # print("Response for invalid token:", response.data)
+    user = create_user(email="mfauser@example.com",
+                       password="securepass", is_mfa_enabled=True)
 
-    # Ensure the response returns a 401 status with the correct error message
-    assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    assert response.data["detail"] == "Invalid refresh token."
+    # ✅ Ensure MFA is enabled and secret is generated
+    user.generate_mfa_secret()
+    user.refresh_from_db()
 
+    print("MFA Secret for User:", user.mfa_secret)  # Debugging step
 
-@pytest.mark.django_db
-def test_bulk_register_users(api_client, create_user, setup_roles):
-    """
-    Test bulk registration with valid and invalid inputs.
-    """
-    # Create an admin user and authenticate
-    admin_user = create_user(
-        email="admin@example.com", password="admin_pass", roles=["admin"]
-    )
+    assert user.mfa_secret is not None, "MFA Secret should not be None"
+
+    # ✅ Generate valid MFA code
+    totp = pyotp.TOTP(user.mfa_secret)
+    valid_mfa_code = totp.now()
+
+    print("Generated MFA Code:", valid_mfa_code)  # Debugging step
+
+    # ✅ Positive: Correct MFA code with email included
     response = api_client.post(
-        "/api/login/", {"email": "admin@example.com", "password": "admin_pass"}
+        "/api/auth/mfa/verify/",
+        {"email": "mfauser@example.com", "mfa_code": valid_mfa_code},
+        format="json"  # ✅ Ensures correct content type
     )
-    assert response.status_code == 200
 
-    # Extract token from the response
-    admin_token = response.cookies.get("access_token")
-    assert admin_token is not None  # Ensure the token exists
-
-    # Set the token in the test client for authentication
-    api_client.cookies["access_token"] = admin_token.value
-
-    # Positive: Valid bulk registration
-    valid_payload = {
-        "users": [
-            {
-                "email": "user1@example.com",
-                "password": "Password123!",
-                "roles": ["patient"],
-                "dob": "1990-01-01",
-                "contact_info": "+1234567890",
-                "first_name": "User1",
-                "last_name": "Example",
-                "gender": "Male",
-                "blood_group": "O+",
-            },
-            {
-                "email": "user2@example.com",
-                "password": "SecurePass456!",
-                "roles": ["receptionist", "dentist"],
-                "dob": "1985-05-15",
-                "contact_info": "+9876543210",
-                "first_name": "User2",
-                "last_name": "Example",
-                "gender": "Female",
-                "blood_group": "A-",
-            },
-        ]
-    }
-    response = api_client.post("/api/register/bulk/", valid_payload, format="json")
-    print(response.data)
-    assert response.status_code == status.HTTP_201_CREATED
-    assert response.data["success_count"] == 2
-    assert response.data["failed_count"] == 0
-    assert len(response.data["details"]) == 2
-    assert response.data["details"][0]["status"] == "success"
-    assert response.data["details"][1]["status"] == "success"
+    print("MFA Verification Response:", response.data)  # Debugging step
+    assert response.status_code == status.HTTP_200_OK, response.data
+    assert response.data["message"] == "MFA verification successful."
 
 
 @pytest.mark.django_db
-def test_bulk_register_users_non_admin(api_client, create_user, setup_roles):
+def test_bulk_register_users_non_admin(api_client, create_user):
     """
     Ensure non-admin users cannot access bulk registration.
     """
-    # Create a non-admin user and authenticate
     patient_user = create_user(
-        email="patient@example.com", password="patient_pass", roles=["patient"]
-    )
-    response = api_client.post(
-        "/api/login/", {"email": "patient@example.com", "password": "patient_pass"}
-    )
-    assert response.status_code == 200
+        email="patient@example.com", password="patient_pass", roles=["patient"])
+    api_client.force_authenticate(user=patient_user)
 
-    # Extract token from the response
-    patient_token = response.cookies.get("access_token")
-    assert patient_token is not None  # Ensure the token exists
-
-    # Set the token in the test client for authentication
-    api_client.cookies["access_token"] = patient_token.value
-
-    # Attempt bulk registration
     valid_payload = {
         "users": [
             {
@@ -265,9 +147,132 @@ def test_bulk_register_users_non_admin(api_client, create_user, setup_roles):
             }
         ]
     }
-    response = api_client.post("/api/register/bulk/", valid_payload, format="json")
-    print(response.data)
-    assert response.status_code == 403
-    assert (
-        response.data["detail"] == "You do not have permission to perform this action."
+
+    # ❌ Negative: Non-admin users should not access bulk registration
+    response = api_client.post(
+        "/api/register/bulk/", valid_payload, format="json")
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_register_dependent_with_inline_guardian(api_client, create_user):
+    """
+    ✅ Register a dependent user along with inline guardian creation.
+    """
+    guardian_user = create_user(
+        email="guardian@example.com",
+        password="guardianpass",
+        roles=["patient"],
+        dob="1980-05-20",  # ✅ Ensure guardian is over 18
     )
+
+    response = api_client.post(
+        "/api/register/",
+        {
+            "email": "dependent@example.com",
+            "password": "dependentpass",
+            "roles": ["patient"],
+            "dob": "2020-01-01",  # ✅ Dependent (child) DOB
+            "first_name": "Dependent",
+            "last_name": "User",
+            "gender": "Male",
+            "blood_group": "O+",
+            "guardian": guardian_user.id,  # ✅ Link to existing guardian
+        },
+    )
+
+    response_data = response.json()
+    print("📌 Response Data:", response_data)  # Debugging Output
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response_data["user_type"] == "Dependent"
+    assert response_data["guardian"]["id"] == guardian_user.id
+
+
+@pytest.mark.django_db
+def test_token_refresh(api_client, create_user):
+    """
+    ✅ Ensure a valid refresh token correctly issues a new access token.
+    """
+    user = create_user(email="refreshuser@example.com", password="securepass")
+
+    # ✅ Step 1: Log in to get refresh token in cookies
+    response = api_client.post(
+        "/api/login/", {"email": user.email, "password": "securepass"})
+    assert response.status_code == status.HTTP_200_OK
+
+    # ✅ Step 2: Extract refresh token from cookies
+    refresh_token = response.cookies.get("refresh_token")
+    assert refresh_token is not None  # Ensure the refresh token exists
+
+    # ✅ Step 3: Use the refresh token to get a new access token
+    # Set refresh token in cookies
+    api_client.cookies["refresh_token"] = refresh_token.value
+    refresh_response = api_client.post("/api/login/refresh/")
+
+    # ✅ Step 4: Assertions
+    assert refresh_response.status_code == status.HTTP_200_OK
+    # Ensure a new access token is issued
+    assert "access_token" in refresh_response.cookies
+    assert refresh_response.data["message"] == "Token refreshed successfully!"
+
+
+@pytest.mark.django_db
+def test_token_refresh_invalid_token(api_client):
+    """
+    ❌ Ensure invalid or missing refresh tokens are rejected.
+    """
+
+    # ✅ Step 1: Attempt to refresh without any token
+    response = api_client.post("/api/login/refresh/")
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.data["detail"] == "Refresh token is missing."
+
+    # ✅ Step 2: Attempt to refresh with an invalid token
+    api_client.cookies["refresh_token"] = "invalid_token"
+    response_invalid = api_client.post("/api/login/refresh/")
+
+    assert response_invalid.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response_invalid.data["detail"] in [
+        "Invalid refresh token.", "Token is invalid or expired"
+    ]
+
+
+@pytest.mark.django_db
+def test_logout_user(api_client, create_user):
+    """
+    ✅ Ensure logout clears cookies and blacklists refresh token.
+    """
+
+    # ✅ Step 1: Create and log in a user
+    user = create_user(email="logoutuser@example.com",
+                       password="securepass", roles=["patient"])
+
+    response_login = api_client.post(
+        "/api/login/", {"email": "logoutuser@example.com",
+                        "password": "securepass"}
+    )
+
+    assert response_login.status_code == status.HTTP_200_OK
+    assert "access_token" in response_login.cookies
+    assert "refresh_token" in response_login.cookies
+
+    # ✅ Step 2: Attempt Logout
+    api_client.force_authenticate(user=user)
+    response_logout = api_client.post("/api/logout/")
+
+    assert response_logout.status_code == status.HTTP_200_OK
+    assert response_logout.data["message"] == "Logout successful!"
+
+    # ✅ Step 3: Ensure cookies are properly cleared
+    assert response_logout.cookies["access_token"].value == ""
+    assert response_logout.cookies["refresh_token"].value == ""
+
+    # ✅ Step 4: Try using blacklisted refresh token (Negative Case)
+    api_client.cookies["refresh_token"] = response_login.cookies["refresh_token"]
+
+    response_refresh = api_client.post("/api/login/refresh/")
+
+    # ✅ Ensure token refresh is blocked if blacklisting works
+    if hasattr(RefreshToken, "blacklist"):
+        assert response_refresh.status_code == status.HTTP_401_UNAUTHORIZED

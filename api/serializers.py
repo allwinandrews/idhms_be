@@ -1,3 +1,4 @@
+import logging
 from rest_framework import serializers
 from api.models import Appointment, Role
 import re
@@ -12,7 +13,6 @@ from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +179,8 @@ class RegisterSerializer(serializers.ModelSerializer):
             for role in data.get("roles", [])
         ]
         valid_roles = list(Role.objects.values_list("name", flat=True))
-        invalid_roles = [role for role in role_names if role not in valid_roles]
+        invalid_roles = [
+            role for role in role_names if role not in valid_roles]
         if invalid_roles:
             raise serializers.ValidationError(
                 {"roles": f"Invalid roles: {', '.join(invalid_roles)}"}
@@ -187,7 +188,7 @@ class RegisterSerializer(serializers.ModelSerializer):
 
         # Ensure guardian is 18+ if provided
         guardian = data.get("guardian")
-        if guardian and guardian.dob >= date.today().replace(
+        if guardian and guardian.dob and guardian.dob >= date.today().replace(
             year=date.today().year - 18
         ):
             raise serializers.ValidationError(
@@ -201,7 +202,8 @@ class RegisterSerializer(serializers.ModelSerializer):
         Ensure the date of birth is in the past.
         """
         if value >= now().date():
-            raise serializers.ValidationError("Date of birth must be in the past.")
+            raise serializers.ValidationError(
+                "Date of birth must be in the past.")
         return value
 
     def validate_email(self, value):
@@ -228,27 +230,34 @@ class RegisterSerializer(serializers.ModelSerializer):
         guardian_data = validated_data.pop("guardian_data", None)
         guardian = validated_data.pop("guardian", None)
 
+        # ✅ Ensure guardian is properly assigned
+        if guardian and not isinstance(guardian, User):
+            guardian = User.objects.filter(id=guardian.id).first()
+
         # Handle inline guardian creation
         if guardian_data:
             guardian_roles = guardian_data.pop("roles", [])
-            guardian_roles_instances = Role.objects.filter(name__in=guardian_roles)
-            guardian_email = guardian_data.get("email")
-            if not guardian_email:
-                guardian_email = f"GUARDIAN-{get_random_string(6)}@hospital.local"
-            guardian = User.objects.create_user(
-                email=guardian_email,
-                password=guardian_data.get("password", get_random_string(12)),
-                first_name=guardian_data.get("first_name", "Guardian"),
-                last_name=guardian_data.get("last_name", "User"),
-                dob=guardian_data.get(
-                    "dob", date.today().replace(year=date.today().year - 30)
-                ),
-                contact_info=guardian_data.get("contact_info"),
-            )
-            guardian.roles.set(guardian_roles_instances)
-            validated_data["guardian"] = guardian
+            guardian_roles_instances = Role.objects.filter(
+                name__in=guardian_roles)
+            guardian_email = guardian_data.get(
+                "email", f"GUARDIAN-{get_random_string(6)}@hospital.local")
 
-        # Create the main user
+            guardian, created = User.objects.get_or_create(
+                email=guardian_email,
+                defaults={
+                    "password": guardian_data.get("password", get_random_string(12)),
+                    "first_name": guardian_data.get("first_name", "Guardian"),
+                    "last_name": guardian_data.get("last_name", "User"),
+                    "dob": guardian_data.get("dob", date.today().replace(year=date.today().year - 30)),
+                    "contact_info": guardian_data.get("contact_info"),
+                },
+            )
+            if created:
+                guardian.roles.set(guardian_roles_instances)
+
+        # ✅ Ensure guardian is always set
+        validated_data["guardian"] = guardian
+
         user = User.objects.create_user(
             email=validated_data["email"],
             password=validated_data["password"],
@@ -258,6 +267,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             gender=validated_data["gender"],
             blood_group=validated_data["blood_group"],
             contact_info=validated_data.get("contact_info"),
+            # ✅ Now it is guaranteed to be set
             guardian=validated_data.get("guardian"),
         )
 
@@ -275,11 +285,12 @@ class BulkRegisterSerializer(serializers.Serializer):
 
     def validate(self, data):
         """
-        Validate bulk user data, ensuring unique emails and correct roles.
+        Validate bulk user data, ensuring unique emails and correct role assignments.
         """
-        # Validate unique emails within the bulk request
-        emails = [user_data["email"].lower() for user_data in data["users"] if "email" in user_data]
-        duplicate_emails = {email for email in emails if emails.count(email) > 1}
+        emails = [user_data["email"].lower()
+                  for user_data in data["users"] if "email" in user_data]
+        duplicate_emails = {
+            email for email in emails if emails.count(email) > 1}
 
         if duplicate_emails:
             raise serializers.ValidationError(
@@ -287,52 +298,84 @@ class BulkRegisterSerializer(serializers.Serializer):
             )
 
         # Fetch all valid role names from the database in **lowercase**
-        valid_roles = set(Role.objects.values_list("name", flat=True))  # Already lowercase in DB
-        logger.debug(f"Valid roles from DB: {valid_roles}")
+        valid_roles = {role.lower()
+                       for role in Role.objects.values_list("name", flat=True)}
+        logger.debug(f"✅ Valid roles from DB: {valid_roles}")
 
         for idx, user_data in enumerate(data["users"]):
-            roles = [role.lower() for role in user_data.get("roles", [])]  # Convert input roles to lowercase
-            logger.debug(f"Validating roles for user {idx}: {roles}")
+            roles = user_data.get("roles")
 
-            # Check if all roles exist in the database
+            # ✅ **Ensure roles exist in request (before reaching create method)**
+            if roles is None or not roles:
+                logger.error(f"❌ No roles provided for user {idx}")
+                raise serializers.ValidationError(
+                    {"roles": ["A user must have at least one role assigned."]}
+                )
+
+            if not isinstance(roles, list):
+                logger.error(f"❌ Invalid roles format for user {idx}: {roles}")
+                raise serializers.ValidationError(
+                    {"roles": "Roles must be provided as a list."}
+                )
+
+            # Convert all roles to lowercase for comparison
+            roles = [role.lower() for role in roles]
+
+            # Validate roles against the database
             invalid_roles = [role for role in roles if role not in valid_roles]
             if invalid_roles:
-                logger.error(f"Invalid roles found for user {idx}: {invalid_roles}")
+                logger.error(
+                    f"❌ Invalid roles for user {idx}: {invalid_roles}")
                 raise serializers.ValidationError(
                     {"roles": f"Invalid roles provided: {', '.join(invalid_roles)}"}
                 )
+
+            # ✅ Ensure roles persist in data dictionary
+            user_data["roles"] = roles
 
         return data
 
     def create(self, validated_data):
         """
-        Bulk user creation logic with inline guardian handling and transaction safety.
+        Bulk user creation logic with inline role handling and transaction safety.
         """
         users_data = validated_data["users"]
         created_users = []
         response_details = []
 
+        logger.debug(f"📌 Users Data Before Creation: {users_data}")
+
         with transaction.atomic():
             for idx, user_data in enumerate(users_data):
                 try:
-                    logger.debug(f"Processing user {idx}: {user_data}")
+                    logger.debug(f"📌 Processing user {idx}: {user_data}")
 
-                    # Convert roles to lowercase for filtering
-                    roles = user_data.pop("roles", [])
-                    logger.debug(f"Roles received: {roles}")
+                    # Fetch Role objects from validated data
+                    role_names = user_data.get("roles", [])
+                    logger.debug(
+                        f"📌 Roles received before DB query: {role_names}")
 
-                    # Ensure roles exist in DB (already lowercase)
-                    role_objects = Role.objects.filter(name__in=roles)
-                    logger.debug(f"Roles matched in DB: {[role.name for role in role_objects]}")
+                    role_objects = Role.objects.filter(name__in=role_names)
+                    if not role_objects.exists():
+                        logger.error(
+                            f"❌ Roles not found in the database for user {idx}: {role_names}"
+                        )
+                        raise serializers.ValidationError(
+                            {"roles": f"Roles not found in the database: {role_names}"}
+                        )
 
-                    user_data["roles"] = role_objects  # Attach role objects
+                    logger.debug(
+                        f"✅ Roles matched in DB for user {idx}: {[role.name for role in role_objects]}")
 
                     # Create the user using RegisterSerializer
                     serializer = RegisterSerializer(data=user_data)
                     serializer.is_valid(raise_exception=True)
                     user = serializer.save()
-                    created_users.append(user)
 
+                    # ✅ Assign roles AFTER user creation
+                    user.roles.set(role_objects)
+
+                    created_users.append(user)
                     response_details.append(
                         {
                             "email": user.email,
@@ -342,7 +385,8 @@ class BulkRegisterSerializer(serializers.Serializer):
                     )
 
                 except serializers.ValidationError as e:
-                    logger.error(f"Validation error for user {idx}: {e.detail}")
+                    logger.error(
+                        f"❌ Validation error for user {idx}: {e.detail}")
                     response_details.append(
                         {
                             "email": user_data.get("email", "Unknown"),
@@ -352,7 +396,8 @@ class BulkRegisterSerializer(serializers.Serializer):
                     )
 
                 except Exception as e:
-                    logger.error(f"Unexpected error for user {idx}: {str(e)}")
+                    logger.error(
+                        f"❌ Unexpected error for user {idx}: {str(e)}")
                     response_details.append(
                         {
                             "email": user_data.get("email", "Unknown"),
@@ -366,6 +411,7 @@ class BulkRegisterSerializer(serializers.Serializer):
             "failed_count": len(users_data) - len(created_users),
             "details": response_details,
         }
+
 
 class AppointmentSerializer(serializers.ModelSerializer):
     appointment_time = serializers.SerializerMethodField()
@@ -431,7 +477,8 @@ class AppointmentSerializer(serializers.ModelSerializer):
             "years_of_experience": getattr(obj.dentist, "years_of_experience", 0),
             "clinic_address": getattr(obj.dentist, "clinic_address", ""),
             "available_slots": [
-                {"date": slot.date.strftime("%Y-%m-%d"), "time": slot.time.strftime("%H:%M")}
+                {"date": slot.date.strftime(
+                    "%Y-%m-%d"), "time": slot.time.strftime("%H:%M")}
                 for slot in getattr(obj.dentist, "available_slots", [])
             ],
         }
@@ -442,7 +489,8 @@ class AppointmentSerializer(serializers.ModelSerializer):
             value = make_aware(value)
 
         if value < timezone.now():
-            raise serializers.ValidationError("Appointment date cannot be in the past.")
+            raise serializers.ValidationError(
+                "Appointment date cannot be in the past.")
 
         return value
 
@@ -452,6 +500,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
         dentist = data.get("dentist", getattr(self.instance, "dentist", None))
 
         if patient and dentist and patient == dentist:
-            raise serializers.ValidationError("Patient and dentist cannot be the same person.")
+            raise serializers.ValidationError(
+                "Patient and dentist cannot be the same person.")
 
         return data
